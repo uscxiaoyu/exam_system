@@ -188,6 +188,25 @@ def calculate_score(student_data, standard_key, exam_config):
 
 # ================= 数据库工具函数 =================
 
+def test_db_connection():
+    """
+    测试默认数据库连接是否可用
+    返回: True表示数据库可连接，False表示不可用
+    """
+    try:
+        # 尝试连接默认的本地数据库
+        test_engine = create_engine(
+            "mysql+pymysql://root:@localhost:3306/grade_system",
+            connect_args={'connect_timeout': 2}  # 2秒超时
+        )
+        # 尝试执行一个简单查询
+        with test_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        # 任何异常都表示数据库不可用
+        return False
+
 def get_db_engine(user, password, host, port, db_name):
     return create_engine(f"mysql+pymysql://{user}:{password}@{host}:{port}/{db_name}")
 
@@ -235,6 +254,10 @@ if 'error_files' not in st.session_state: st.session_state.error_files = {}
 if 'standard_key' not in st.session_state: st.session_state.standard_key = None
 if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
 
+# 数据库连接状态检测
+if 'db_available' not in st.session_state:
+    st.session_state.db_available = test_db_connection()
+
 # 默认考试配置 Config Structure: section_id, match_keyword, name, score, num_questions
 DEFAULT_CONFIG = [
     {'section_id': '1', 'match_keyword': '一、单项选择题', 'name': '单选得分', 'score': 2.0, 'num_questions': 10},
@@ -253,8 +276,12 @@ if 'exam_config_df' not in st.session_state:
 if 'last_row_count' not in st.session_state:
     st.session_state.last_row_count = len(st.session_state.exam_config_df)
 
-# 布局 Tabs
-tab1, tab2, tab3 = st.tabs(["⚙️ 设置 & 上传", "📊 批改结果", "💾 数据库 & 历史"])
+# 布局 Tabs - 根据数据库可用性动态显示
+if st.session_state.db_available:
+    tab1, tab2, tab3 = st.tabs(["⚙️ 设置 & 上传", "📊 批改结果", "💾 数据库 & 历史"])
+else:
+    tab1, tab2 = st.tabs(["⚙️ 设置 & 上传", "📊 批改结果"])
+    tab3 = None  # 数据库不可用时不创建tab3
 
 # --- Tab 1: 设置与上传 ---
 with tab1:
@@ -379,6 +406,11 @@ with tab1:
                 st.session_state.error_files = errors
                 st.toast(f"处理完成！成功: {len(processed)}, 失败: {len(errors)}", icon="🎉")
                 st.info("请切换到【批改结果】标签页查看详情 👉")
+        
+        # 数据库状态提示
+        st.divider()
+        if not st.session_state.db_available:
+            st.info("ℹ️ **数据库功能不可用**\n\n当前环境无法连接到数据库，数据库功能已被隐藏。核心批改功能不受影响。")
 
 # --- Tab 2: 批改结果 ---
 with tab2:
@@ -474,81 +506,82 @@ with tab2:
             st.info("👈 请在【设置 & 上传】页进行阅卷操作")
 
 # --- Tab 3: 数据库与历史 ---
-with tab3:
-    col_db_conn, col_history = st.columns([1, 4])
-    
-    with col_db_conn:
-        st.subheader("🔌 数据库连接")
-        db_user = st.text_input("User", "root")
-        db_pass = st.text_input("Password", type="password")
-        db_host = st.text_input("Host", "localhost")
-        db_port = st.text_input("Port", "3306")
-        db_name = st.text_input("DB Name", "grade_system")
+if st.session_state.db_available and tab3 is not None:
+    with tab3:
+        col_db_conn, col_history = st.columns([1, 4])
         
-        st.markdown("---")
-        if st.button("💾 保存当前成绩到 DB", type="primary"):
-            if not st.session_state.processed_data:
-                st.warning("没有可保存的成绩数据")
-            elif not db_pass:
-                st.error("请输入密码 (Password)")
-            else:
-                engine = get_db_engine(db_user, db_pass, db_host, db_port, db_name)
-                try:
-                    df_save = pd.DataFrame(st.session_state.processed_data)
-                    success, msg = save_to_mysql(df_save, exam_name_input, engine)
-                    if success: st.success(msg)
-                    else: st.error(msg)
-                except Exception as e:
-                    st.error(f"操作失败: {e}")
-
-    with col_history:
-        st.subheader("🕰️ 历史考情回顾")
-        if db_pass:
-            try:
-                engine = get_db_engine(db_user, db_pass, db_host, db_port, db_name)
-                exams_df = pd.read_sql("SELECT DISTINCT exam_name FROM exam_records", engine)
-                
-                if not exams_df.empty:
-                    exam_list = exams_df['exam_name'].tolist()
-                    selected_exam = st.selectbox("选择考试场次:", exam_list)
-                    
-                    if selected_exam:
-                        # 展示数据
-                        hist_df = pd.read_sql(
-                            text("SELECT student_id, student_name, total_score, details_json, created_at FROM exam_records WHERE exam_name=:name"), 
-                            engine, 
-                            params={"name": selected_exam}
-                        )
-                        
-                        # 解析 details_json 提取分项得分
-                        if not hist_df.empty and 'details_json' in hist_df.columns:
-                            try:
-                                # json 解析
-                                json_data = hist_df['details_json'].apply(lambda x: json.loads(x) if x else {})
-                                details_df = pd.DataFrame(json_data.tolist())
-                                # 筛选得分列
-                                score_cols = [c for c in details_df.columns if '得分' in c]
-                                if score_cols:
-                                    # 合并
-                                    hist_df = pd.concat([hist_df.drop(columns=['details_json']), details_df[score_cols]], axis=1)
-                                else:
-                                    hist_df = hist_df.drop(columns=['details_json'])
-                            except Exception as e:
-                                st.warning(f"解析详情失败: {e}")
-                        
-                        st.dataframe(hist_df, width='stretch')
-                        
-                        # 删除功能区
-                        with st.expander("🗑️ 危险区域: 删除该场考试记录"):
-                            st.warning(f"确定要删除【{selected_exam}】的所有记录吗？此操作不可恢复！")
-                            if st.button("确认删除", type="secondary"):
-                                success, msg = delete_exam_record(selected_exam, engine)
-                                if success:
-                                    st.success(msg)
-                                    st.experimental_rerun()
-                                else:
-                                    st.error(msg)
+        with col_db_conn:
+            st.subheader("🔌 数据库连接")
+            db_user = st.text_input("User", "root")
+            db_pass = st.text_input("Password", type="password")
+            db_host = st.text_input("Host", "localhost")
+            db_port = st.text_input("Port", "3306")
+            db_name = st.text_input("DB Name", "grade_system")
+            
+            st.markdown("---")
+            if st.button("💾 保存当前成绩到 DB", type="primary"):
+                if not st.session_state.processed_data:
+                    st.warning("没有可保存的成绩数据")
+                elif not db_pass:
+                    st.error("请输入密码 (Password)")
                 else:
-                    st.info("数据库中暂无历史记录")
-            except Exception as e:
-                st.warning("数据库连接未就绪或表结构不存在")
+                    engine = get_db_engine(db_user, db_pass, db_host, db_port, db_name)
+                    try:
+                        df_save = pd.DataFrame(st.session_state.processed_data)
+                        success, msg = save_to_mysql(df_save, exam_name_input, engine)
+                        if success: st.success(msg)
+                        else: st.error(msg)
+                    except Exception as e:
+                        st.error(f"操作失败: {e}")
+
+        with col_history:
+            st.subheader("🕰️ 历史考情回顾")
+            if db_pass:
+                try:
+                    engine = get_db_engine(db_user, db_pass, db_host, db_port, db_name)
+                    exams_df = pd.read_sql("SELECT DISTINCT exam_name FROM exam_records", engine)
+                    
+                    if not exams_df.empty:
+                        exam_list = exams_df['exam_name'].tolist()
+                        selected_exam = st.selectbox("选择考试场次:", exam_list)
+                        
+                        if selected_exam:
+                            # 展示数据
+                            hist_df = pd.read_sql(
+                                text("SELECT student_id, student_name, total_score, details_json, created_at FROM exam_records WHERE exam_name=:name"), 
+                                engine, 
+                                params={"name": selected_exam}
+                            )
+                            
+                            # 解析 details_json 提取分项得分
+                            if not hist_df.empty and 'details_json' in hist_df.columns:
+                                try:
+                                    # json 解析
+                                    json_data = hist_df['details_json'].apply(lambda x: json.loads(x) if x else {})
+                                    details_df = pd.DataFrame(json_data.tolist())
+                                    # 筛选得分列
+                                    score_cols = [c for c in details_df.columns if '得分' in c]
+                                    if score_cols:
+                                        # 合并
+                                        hist_df = pd.concat([hist_df.drop(columns=['details_json']), details_df[score_cols]], axis=1)
+                                    else:
+                                        hist_df = hist_df.drop(columns=['details_json'])
+                                except Exception as e:
+                                    st.warning(f"解析详情失败: {e}")
+                            
+                            st.dataframe(hist_df, width='stretch')
+                            
+                            # 删除功能区
+                            with st.expander("🗑️ 危险区域: 删除该场考试记录"):
+                                st.warning(f"确定要删除【{selected_exam}】的所有记录吗？此操作不可恢复！")
+                                if st.button("确认删除", type="secondary"):
+                                    success, msg = delete_exam_record(selected_exam, engine)
+                                    if success:
+                                        st.success(msg)
+                                        st.experimental_rerun()
+                                    else:
+                                        st.error(msg)
+                    else:
+                        st.info("数据库中暂无历史记录")
+                except Exception as e:
+                    st.warning("数据库连接未就绪或表结构不存在")
