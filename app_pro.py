@@ -410,7 +410,12 @@ with tab1:
         # 数据库状态提示
         st.divider()
         if not st.session_state.db_available:
-            st.info("ℹ️ **数据库功能不可用**\n\n当前环境无法连接到数据库，数据库功能已被隐藏。核心批改功能不受影响。")
+            st.info("ℹ️ **默认数据库连接不可用**")
+            st.caption("默认尝试连接本地 `root` 用户(无密码)。如果您有自定义配置(如密码)，请点击下方按钮手动配置。")
+            
+            if st.button("🔓 强制显示数据库/历史 Tab"):
+                st.session_state.db_available = True
+                st.rerun()
 
 # --- Tab 2: 批改结果 ---
 with tab2:
@@ -536,10 +541,24 @@ if st.session_state.db_available and tab3 is not None:
 
         with col_history:
             st.subheader("🕰️ 历史考情回顾")
+            
+            # 添加刷新按钮
+            col_title, col_refresh = st.columns([0.8, 0.2])
+            with col_refresh:
+                refresh_clicked = st.button("🔄 刷新", help="重新加载考试列表")
+            
             if db_pass:
                 try:
                     engine = get_db_engine(db_user, db_pass, db_host, db_port, db_name)
-                    exams_df = pd.read_sql("SELECT DISTINCT exam_name FROM exam_records", engine)
+                    
+                    # 使用会话状态缓存考试列表，点击刷新时清除缓存
+                    if refresh_clicked or 'exam_list_cache' not in st.session_state:
+                        exams_df = pd.read_sql("SELECT DISTINCT exam_name FROM exam_records", engine)
+                        st.session_state.exam_list_cache = exams_df
+                        if refresh_clicked:
+                            st.toast("✅ 考试列表已刷新！", icon="🔄")
+                    else:
+                        exams_df = st.session_state.exam_list_cache
                     
                     if not exams_df.empty:
                         exam_list = exams_df['exam_name'].tolist()
@@ -578,6 +597,9 @@ if st.session_state.db_available and tab3 is not None:
                                     success, msg = delete_exam_record(selected_exam, engine)
                                     if success:
                                         st.success(msg)
+                                        # 清除缓存并刷新
+                                        if 'exam_list_cache' in st.session_state:
+                                            del st.session_state.exam_list_cache
                                         st.experimental_rerun()
                                     else:
                                         st.error(msg)
