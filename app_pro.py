@@ -5,6 +5,8 @@ import io
 import json
 import plotly.express as px
 from sqlalchemy import create_engine, text
+import requests
+from typing import Dict, Any, List, Tuple
 
 # ================= 页面配置与 CSS 美化 =================
 st.set_page_config(
@@ -17,45 +19,113 @@ st.set_page_config(
 # 自定义 CSS 样式
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    
     /* 全局字体 */
-    .stApp {
+    html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
-    /* 标题样式 */
-    .main-title {
-        font-size: 2.5rem;
-        font-weight: 700;
-        background: -webkit-linear-gradient(45deg, #4b6cb7, #182848);
+    
+    /* 标题区域 Hero Section */
+    .hero-container {
+        padding: 2rem;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .hero-title {
+        font-size: 3rem;
+        font-weight: 800;
+        margin: 0;
+        background: -webkit-linear-gradient(to right, #ffffff, #e0e0e0);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        margin-bottom: 0.5rem;
     }
-    .sub-title {
+    .hero-subtitle {
         font-size: 1.2rem;
-        color: #666;
-        margin-bottom: 2rem;
+        opacity: 0.9;
+        margin-top: 0.5rem;
     }
-    /* 卡片容器样式 */
-    .css-1r6slb0 {
-        border-radius: 12px;
-        padding: 20px;
-        background-color: #f8f9fa;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    
+    /* 卡片容器增强 */
+    .stCard {
+        background-color: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        border: 1px solid #f0f0f0;
+        margin-bottom: 1rem;
     }
-    /* 按钮样式 */
+    
+    /* 按钮样式优化 */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
+        border: none;
+        padding: 0.5rem 1rem;
         transition: all 0.3s ease;
     }
     .stButton>button:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
-    /* 指标卡片 */
+    
+    /* 主按钮 */
+    div[data-testid="stButton"] > button[kind="primary"] {
+        background: linear-gradient(90deg, #4b6cb7 0%, #182848 100%);
+        color: white;
+    }
+    
+    /* 侧边栏美化 */
+    section[data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+        border-right: 1px solid #e9ecef;
+    }
+    section[data-testid="stSidebar"] .block-container {
+        padding-top: 2rem;
+    }
+    
+    /* 指标卡片优化 */
     [data-testid="stMetricValue"] {
-        font-size: 2rem;
+        font-size: 2.2rem;
+        font-weight: 700;
         color: #2c3e50;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 1rem;
+        color: #6c757d;
+    }
+    
+    /* Tabs 样式 */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 4px 4px 0 0;
+        padding: 10px 20px;
+        background-color: transparent;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #eef2ff;
+        color: #4b6cb7;
+        font-weight: bold;
+        border-bottom: 2px solid #4b6cb7;
+    }
+    
+    /* 提示框样式 */
+    .stAlert {
+        border-radius: 8px;
+        border: none;
+        font-size: 0.85rem !important; /* 缩小Alert文字 */
+    }
+    
+    /* Caption 样式微调 */
+    [data-testid="stCaptionContainer"] {
+        font-size: 0.8rem !important; /* 缩小Caption文字 */
+        color: #888;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -64,7 +134,321 @@ st.markdown("""
 # ================= 全局配置 =================
 # 默认配置移入 session_state 初始化中
 
+# ================= 配置持久化功能 =================
+import os
+from datetime import datetime
+
+# 配置文件路径
+CONFIG_DIR = "config"
+LLM_CONFIG_FILE = os.path.join(CONFIG_DIR, "llm_config.json")
+EXAM_CONFIG_FILE = os.path.join(CONFIG_DIR, "exam_config.json")
+EXAMPLES_DIR = os.path.join(CONFIG_DIR, "examples")
+
+# 确保配置目录存在
+os.makedirs(CONFIG_DIR, exist_ok=True)
+os.makedirs(EXAMPLES_DIR, exist_ok=True)
+
+def save_llm_config(config: Dict[str, Any]):
+    """保存LLM配置到文件"""
+    try:
+        with open(LLM_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"保存LLM配置失败: {e}")
+        return False
+
+def load_llm_config() -> Dict[str, Any]:
+    """从文件加载LLM配置"""
+    default_config = {
+        'base_url': 'https://api.deepseek.com',
+        'api_key': '',
+        'model': 'deepseek-chat',
+        'temperature': 0.3,
+        'max_tokens': 500
+    }
+    
+    if os.path.exists(LLM_CONFIG_FILE):
+        try:
+            with open(LLM_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"加载LLM配置失败: {e}")
+            return default_config
+    return default_config
+
+def save_exam_config(config: List[Dict]):
+    """保存题型配置到文件"""
+    try:
+        with open(EXAM_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"保存题型配置失败: {e}")
+        return False
+
+def load_exam_config() -> List[Dict]:
+    """从文件加载题型配置"""
+    if os.path.exists(EXAM_CONFIG_FILE):
+        try:
+            with open(EXAM_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"加载题型配置失败: {e}")
+    return None  # 返回None表示使用默认配置
+
+def save_few_shot_examples(exam_name: str, examples: Dict[str, List[Dict]]):
+    """保存主观题示例到文件（按考试名称和时间）"""
+    if not examples:
+        return False
+    
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{exam_name}_{timestamp}.json"
+        filepath = os.path.join(EXAMPLES_DIR, filename)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(examples, f, indent=2, ensure_ascii=False)
+        return True, filename
+    except Exception as e:
+        print(f"保存示例失败: {e}")
+        return False, None
+
+def load_few_shot_examples(exam_name: str = None) -> Dict[str, List[Dict]]:
+    """加载主观题示例（根据考试名称加载最新的）"""
+    try:
+        # 获取所有示例文件
+        if not os.path.exists(EXAMPLES_DIR):
+            return {}
+        
+        files = [f for f in os.listdir(EXAMPLES_DIR) if f.endswith('.json')]
+        
+        if not files:
+            return {}
+        
+        # 如果指定了考试名称，只加载该考试的最新文件
+        if exam_name:
+            exam_files = [f for f in files if f.startswith(exam_name + '_')]
+            if exam_files:
+                # 按时间戳排序，取最新的
+                exam_files.sort(reverse=True)
+                filepath = os.path.join(EXAMPLES_DIR, exam_files[0])
+            else:
+                return {}
+        else:
+            # 没有指定考试名称，加载最新的文件
+            files.sort(reverse=True)
+            filepath = os.path.join(EXAMPLES_DIR, files[0])
+        
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"加载示例失败: {e}")
+        return {}
+
+def list_example_files() -> List[str]:
+    """列出所有示例文件"""
+    try:
+        if not os.path.exists(EXAMPLES_DIR):
+            return []
+        return sorted([f for f in os.listdir(EXAMPLES_DIR) if f.endswith('.json')], reverse=True)
+    except Exception as e:
+        print(f"列出示例文件失败: {e}")
+        return []
+
+# ================= LLM 批改功能 =================
+
+def call_llm_api(prompt: str, api_config: Dict[str, Any]) -> Tuple[bool, Any]:
+    """
+    调用LLM API进行批改
+    返回: (success, response_text/error_msg)
+    """
+    try:
+        url = f"{api_config['base_url'].rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_config['api_key']}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": api_config.get('model', 'gpt-4o-mini'),
+            "messages": [
+                {"role": "system", "content": "你是一位专业的教师，负责批改学生的主观题答案。请根据题目、参考答案和评分标准，给出客观公正的评分。"},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": api_config.get('temperature', 0.3),
+            "max_tokens": api_config.get('max_tokens', 500)
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        
+        result = response.json()
+        content = result['choices'][0]['message']['content']
+        return True, content
+        
+    except Exception as e:
+        return False, f"API调用失败: {str(e)}"
+
+def test_llm_connection(api_config: Dict[str, Any]) -> Tuple[bool, str]:
+    """
+    测试LLM API连接
+    """
+    try:
+        url = f"{api_config['base_url'].rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_config['api_key']}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": api_config.get('model', 'gpt-4o-mini'),
+            "messages": [
+                {"role": "user", "content": "Hello"}
+            ],
+            "max_tokens": 5
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=10)
+        response.raise_for_status()
+        return True, "连接成功"
+    except Exception as e:
+        return False, str(e)
+
+def grade_subjective_question(
+    question_text: str, 
+    reference_answer: str, 
+    student_answer: str, 
+    max_score: float,
+    grading_criteria: str,
+    api_config: Dict[str, Any],
+    examples: List[Dict] = None
+) -> Tuple[bool, float, str]:
+    """
+    批改单个主观题
+    返回: (success, score, comment)
+    """
+    # 构建 Few-Shot 示例部分
+    few_shot_text = ""
+    if examples:
+        few_shot_text = "【参考示例 (Few-Shot)】\n以下是教师提供的评分参考示例，请学习其评分尺度和评语风格：\n\n"
+        for i, ex in enumerate(examples):
+            few_shot_text += f"示例 {i+1}:\n[学生答案]: {ex['student_answer']}\n[评分]: {ex['score']}\n[评语]: {ex['comment']}\n\n"
+    
+    # 构建批改prompt
+    prompt = f"""请批改以下主观题：
+
+【题目】
+{question_text}
+
+【参考答案】
+{reference_answer}
+
+【评分标准】
+满分：{max_score}分
+{grading_criteria if grading_criteria else '1. 准确性：答案是否涵盖了参考答案的核心要点\n2. 完整性：论述是否全面\n3. 逻辑性：条理是否清晰'}
+
+{few_shot_text}
+
+【学生答案】
+{student_answer}
+
+【批改要求】
+1. 请仔细对比学生答案与参考答案及评分标准
+2. 给出0到{max_score}之间的分数（可以是小数）
+3. **必须给出详细的评分理由**，说明得分点和扣分点
+
+请严格按照以下JSON格式返回结果：
+{{"score": 分数, "comment": "详细评语，包含得分理由和建议"}}
+"""
+    
+    success, response = call_llm_api(prompt, api_config)
+    if not success:
+        return False, 0.0, response
+    
+    # 解析LLM返回的结果
+    try:
+        # 尝试提取JSON
+        import re
+        json_match = re.search(r'\{[^{}]*"score"[^{}]*\}', response)
+        if json_match:
+            result_json = json.loads(json_match.group())
+            score = float(result_json.get('score', 0))
+            comment = result_json.get('comment', '无评语')
+            # 确保分数在合理范围内
+            score = max(0, min(score, max_score))
+            return True, score, comment
+        else:
+            # 如果没有找到JSON，尝试从文本中提取分数
+            score_match = re.search(r'(\d+\.?\d*)\s*分', response)
+            if score_match:
+                score = float(score_match.group(1))
+                score = max(0, min(score, max_score))
+                return True, score, response
+            else:
+                return False, 0.0, f"无法解析LLM响应: {response}"
+    except Exception as e:
+        return False, 0.0, f"解析失败: {str(e)}"
+
+def batch_grade_subjective(
+    students_data: List[Dict], 
+    standard_key: Dict,
+    exam_config: List[Dict], 
+    api_config: Dict[str, Any],
+    progress_callback=None
+) -> List[Dict]:
+    """
+    批量批改学生的主观题
+    返回: 包含批改结果的学生数据列表
+    """
+    total_students = len(students_data)
+    
+    # 获取主观题配置
+    subjective_sections = [sec for sec in exam_config if sec.get('question_type') == '主观题']
+    
+    for student_idx, student in enumerate(students_data):
+        if progress_callback:
+            progress_callback(f"正在批改: {student.get('姓名', '未知')} ({student_idx + 1}/{total_students})")
+        
+        for sec in subjective_sections:
+            sec_id = sec.get('section_id')
+            num_questions = sec.get('num_questions', 1)
+            reference_answer = sec.get('reference_answer', '')
+            grading_criteria = sec.get('grading_criteria', '')
+            max_score = sec.get('score', 0)
+            question_text = sec.get('match_keyword', '')
+            
+            # 遍历该大题的所有小题
+            for q_num in range(1, num_questions + 1):
+                q_key = f"{sec_id}-{q_num}"
+                student_answer = student.get(q_key, '')
+                
+                if not student_answer:
+                    student[f'Q{q_key}_score'] = 0.0
+                    student[f'Q{q_key}_comment'] = '未作答'
+                    continue
+                
+                # 调用LLM批改
+                success, score, comment = grade_subjective_question(
+                    question_text=f"{question_text} 第{q_num}题",
+                    reference_answer=reference_answer,
+                    student_answer=student_answer,
+                    max_score=max_score,
+                    grading_criteria=grading_criteria,
+                    api_config=api_config
+                )
+                
+                if success:
+                    student[f'Q{q_key}_score'] = score
+                    student[f'Q{q_key}_comment'] = comment
+                else:
+                    student[f'Q{q_key}_score'] = 0.0
+                    student[f'Q{q_key}_comment'] = f'批改失败: {comment}'
+    
+    return students_data
+
 # ================= 核心逻辑函数 =================
+
 
 def parse_text_content(content, exam_config):
     """
@@ -100,6 +484,7 @@ def parse_text_content(content, exam_config):
     # 使用配置中的题目定义
     for i, section in enumerate(exam_config):
         sec_title = section['match_keyword']
+        question_type = section.get('question_type', '客观题')
         start_idx = full_text.find(sec_title)
         if start_idx == -1:
             continue # 宽容模式：找不到该大题则跳过
@@ -113,26 +498,55 @@ def parse_text_content(content, exam_config):
             end_idx = len(full_text)
             
         section_text = full_text[start_idx:end_idx]
+        sec_id = section.get('section_id', str(i+1))
         
-        # 提取该区域内的所有 "数字. 答案"
-        lines_in_section = section_text.split('\n')
-        for line in lines_in_section:
-            # 匹配 "1. A" 或 "1.A" 
-            matches = re.findall(r'(\d+)\.\s*([a-zA-Z0-9_\u4e00-\u9fa5]+)?', line)
-            for q_num, ans in matches:
-                # 这里的 section['id'] 建议使用 1, 2, 3 这样的唯一标识
-                # 为了兼容旧逻辑，我们假设 config 中有一列 "section_id"
-                sec_id = section.get('section_id', str(i+1)) 
-                key = f"{sec_id}-{q_num}"
-                ans = ans.strip().upper() if ans else ""
-                student_data[key] = ans
+        if question_type == '客观题':
+            # 客观题：提取该区域内的所有 "数字. 答案"（短答案）
+            lines_in_section = section_text.split('\n')
+            for line in lines_in_section:
+                # 匹配 "1. A" 或 "1.A" 
+                matches = re.findall(r'(\d+)\.\s*([a-zA-Z0-9_\u4e00-\u9fa5]+)?', line)
+                for q_num, ans in matches:
+                    key = f"{sec_id}-{q_num}"
+                    ans = ans.strip().upper() if ans else ""
+                    student_data[key] = ans
+        else:
+            # 主观题：提取长文本答案
+            lines_in_section = section_text.split('\n')
+            current_q_num = None
+            current_answer = []
+            
+            for line in lines_in_section:
+                # 检查是否是新题号的开始
+                q_start_match = re.match(r'^(\d+)\.\s*(.*)', line)
+                if q_start_match:
+                    # 保存之前题目的答案
+                    if current_q_num is not None:
+                        key = f"{sec_id}-{current_q_num}"
+                        student_data[key] = '\n'.join(current_answer).strip()
+                    
+                    # 开始新题
+                    current_q_num = q_start_match.group(1)
+                    answer_start = q_start_match.group(2).strip()
+                    current_answer = [answer_start] if answer_start else []
+                elif current_q_num is not None:
+                    # 续接当前题目的答案
+                    if line.strip():
+                        current_answer.append(line.strip())
+            
+            # 保存最后一题
+            if current_q_num is not None:
+                key = f"{sec_id}-{current_q_num}"
+                student_data[key] = '\n'.join(current_answer).strip()
 
     return True, student_data
 
-def calculate_score(student_data, standard_key, exam_config):
+def calculate_score(student_data, standard_key, exam_config, llm_graded_data=None):
     """
     计算分数，包括各大题得分
     **修正：大小写无关**
+    **支持主观题和客观题混合评分**
+    llm_graded_data: 已经通过LLM批改的主观题数据 (可选)
     """
     record = {
         '学号': student_data['学号'], 
@@ -142,6 +556,8 @@ def calculate_score(student_data, standard_key, exam_config):
     
     # 转换为查找字典: section_id -> score
     score_map = {sec.get('section_id', str(i+1)): sec['score'] for i, sec in enumerate(exam_config)}
+    # 题型映射
+    type_map = {sec.get('section_id', str(i+1)): sec.get('question_type', '客观题') for i, sec in enumerate(exam_config)}
     
     # 初始化各大题得分为0
     section_scores = {sec.get('section_id', str(i+1)): 0 for i, sec in enumerate(exam_config)}
@@ -156,26 +572,39 @@ def calculate_score(student_data, standard_key, exam_config):
         # q_key 格式如 '1-1', '2-1'
         section_id = q_key.split('-')[0]
         score_per_q = score_map.get(section_id, 0)
+        question_type = type_map.get(section_id, '客观题')
         
         student_ans = student_data.get(q_key, '')
         
-        # 判分：大小写无关比较
-        s_ans_norm = str(student_ans).strip().upper()
-        t_ans_norm = str(std_ans).strip().upper()
-        
-        if s_ans_norm == t_ans_norm:
-            score = score_per_q
+        if question_type == '客观题':
+            # 客观题：大小写无关比较
+            s_ans_norm = str(student_ans).strip().upper()
+            t_ans_norm = str(std_ans).strip().upper()
+            
+            if s_ans_norm == t_ans_norm:
+                score = score_per_q
+            else:
+                score = 0
+            
+            # 记录单题得分
+            record[f'Q{q_key}'] = score
         else:
-            score = 0
-        
-        # 记录单题得分
-        record[f'Q{q_key}'] = score
+            # 主观题：从llm_graded_data中获取分数
+            if llm_graded_data and q_key in llm_graded_data:
+                score = llm_graded_data[q_key].get('score', 0)
+                comment = llm_graded_data[q_key].get('comment', '')
+                record[f'Q{q_key}'] = score
+                record[f'Q{q_key}_comment'] = comment
+            else:
+                # 如果没有LLM批改数据，标记为待批改
+                score = 0  # 保持数字类型
+                record[f'Q{q_key}'] = 0.0  # 统一为数字类型，避免pyarrow转换错误
+                record[f'Q{q_key}_comment'] = '⏳ 待批改'  # 在评语中标注状态
         
         # 累加大题得分
-        if section_id in section_scores:
+        if section_id in section_scores and isinstance(score, (int, float)):
             section_scores[section_id] += score
-            
-        total_score += score
+            total_score += score
     
     # 将大题得分写入 record，使用配置中的列名
     for i, sec in enumerate(exam_config):
@@ -245,8 +674,12 @@ def delete_exam_record(exam_name, engine):
 # ================= UI 主程序 =================
 
 # 头部
-st.markdown('<div class="main-title">🎓 作业自动批改系统 </div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">自动化 • 高效 • 数据化</div>', unsafe_allow_html=True)
+st.markdown("""
+<div class="hero-container">
+    <div class="hero-title">🎓 智能作业批改系统 Pro</div>
+    <div class="hero-subtitle">自动化批阅 • 多模型智能评分 • 数据化教学分析</div>
+</div>
+""", unsafe_allow_html=True)
 
 # Session State 初始化
 if 'processed_data' not in st.session_state: st.session_state.processed_data = []
@@ -254,19 +687,34 @@ if 'error_files' not in st.session_state: st.session_state.error_files = {}
 if 'standard_key' not in st.session_state: st.session_state.standard_key = None
 if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
 
+# LLM配置初始化（从文件加载）
+if 'llm_config' not in st.session_state:
+    st.session_state.llm_config = load_llm_config()
+
+# 少样本学习示例数据结构初始化
+if 'few_shot_examples' not in st.session_state:
+    st.session_state.few_shot_examples = {}
+
+# 主观题批改详情数据结构初始化
+if 'subjective_details' not in st.session_state:
+    st.session_state.subjective_details = []
+
 # 数据库连接状态检测
 if 'db_available' not in st.session_state:
     st.session_state.db_available = test_db_connection()
 
-# 默认考试配置 Config Structure: section_id, match_keyword, name, score, num_questions
+# 默认考试配置 Config Structure: section_id, match_keyword, name, score, num_questions, question_type
 DEFAULT_CONFIG = [
-    {'section_id': '1', 'match_keyword': '一、单项选择题', 'name': '单选得分', 'score': 2.0, 'num_questions': 10},
-    {'section_id': '2', 'match_keyword': '二、判断题', 'name': '判断得分', 'score': 2.0, 'num_questions': 10},
-    {'section_id': '3', 'match_keyword': '三、选择填空题', 'name': '填空得分', 'score': 3.0, 'num_questions': 5},
-    {'section_id': '4', 'match_keyword': '四、综合查询题', 'name': '综合得分', 'score': 6.0, 'num_questions': 3}
+    {'section_id': '1', 'match_keyword': '一、单项选择题', 'name': '单选得分', 'score': 2.0, 'num_questions': 10, 'question_type': '客观题'},
+    {'section_id': '2', 'match_keyword': '二、判断题', 'name': '判断得分', 'score': 2.0, 'num_questions': 10, 'question_type': '客观题'},
+    {'section_id': '3', 'match_keyword': '三、选择填空题', 'name': '填空得分', 'score': 3.0, 'num_questions': 5, 'question_type': '客观题'},
+    {'section_id': '4', 'match_keyword': '四、综合查询题', 'name': '综合得分', 'score': 6.0, 'num_questions': 3, 'question_type': '客观题'}
 ]
+
+# 题型配置初始化（从文件加载）
 if 'exam_config' not in st.session_state:
-    st.session_state.exam_config = DEFAULT_CONFIG
+    loaded_config = load_exam_config()
+    st.session_state.exam_config = loaded_config if loaded_config else DEFAULT_CONFIG
 
 # 初始化 DataFrame 状态以保持 Index 稳定性
 if 'exam_config_df' not in st.session_state:
@@ -278,116 +726,376 @@ if 'last_row_count' not in st.session_state:
 
 # 布局 Tabs - 根据数据库可用性动态显示
 if st.session_state.db_available:
-    tab1, tab2, tab3 = st.tabs(["⚙️ 设置 & 上传", "📊 批改结果", "💾 数据库 & 历史"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📝 考试设置", "📂 答卷上传", "📊 批改结果", "🤖 主观题详情", "💾 数据库 & 历史"])
 else:
-    tab1, tab2 = st.tabs(["⚙️ 设置 & 上传", "📊 批改结果"])
-    tab3 = None  # 数据库不可用时不创建tab3
+    tab1, tab2, tab3, tab4 = st.tabs(["📝 考试设置", "📂 答卷上传", "📊 批改结果", "🤖 主观题详情"])
+    tab5 = None  # 数据库不可用时不创建tab5
 
-# --- Tab 1: 设置与上传 ---
-with tab1:
-    col_cfg, col_up = st.columns([1.5, 2])
+# --- 侧边栏：LLM配置 ---
+with st.sidebar:
+    st.header("🤖 LLM批改配置")
+    st.caption("用于主观题自动批改")
     
-    with col_cfg:
-        st.info("📝 考试题型与分值配置")
-        exam_name_input = st.text_input("考试名称 (归档标签)", "2025_AI_Midterm")
+    # 检查是否有主观题
+    has_subjective = any(sec.get('question_type') == '主观题' for sec in st.session_state.exam_config)
+    
+    # 显示状态提示
+    if has_subjective:
+        st.success("✅ 检测到主观题配置")
+    else:
+        st.info("💡 提示：在配置表中将题型改为「主观题」后需要配置LLM")
+    
+    # API Provider 选择
+    provider = st.selectbox(
+        "选择API服务商", 
+        ["DeepSeek",  "OpenAI", "Google (Gemini)", "Custom"],
+        help="选择后将自动预填Base URL和推荐模型"
+    )
+    
+    # 预设配置
+    provider_configs = {
+        "DeepSeek": {
+            "base_url": "https://api.deepseek.com",
+            "model": "deepseek-chat"
+        },
+        "OpenAI": {
+            "base_url": "https://api.openai.com/v1",
+            "model": "gpt-4o-mini"
+        },
+        "Google (Gemini)": {
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "model": "gemini-1.5-flash"
+        },
+        "Custom": {
+            "base_url": st.session_state.llm_config['base_url'],
+            "model": st.session_state.llm_config['model']
+        }
+    }
+    
+    # 自定义回调用于更新session state (当provider改变时)
+    current_defaults = provider_configs.get(provider, {})
+    
+    # 每次provider变化或未设置时，使用默认值；否则保留用户输入
+    # 为了更友好的交互，我们仅在provider不为Custom且当前值与预设不符（或者想要强制重置）时提供简单的填充
+    # 这里采用简单策略：Text Input的value受provider影响，允许用户随后修改
+    
+    # 如果用户刚切换了provider，我们需要更新显示的值
+    # Streamlit的重跑机制下，我们可以通过key来管理状态，但这里简单起见，
+    # 我们根据provider选择动态设置text_input的默认value
+    
+    # 逻辑：如果当前选择的provider不是上次的provider，则更新默认值
+    if 'last_provider' not in st.session_state:
+        st.session_state.last_provider = "DeepSeek"
         
-        st.markdown("###### 题型配置表 (可增删改)")
-        # 使用 Data Editor 允许用户修改配置
-        edited_df = st.data_editor(
-            st.session_state.exam_config_df,
-            column_config={
-                "section_id": "序号(ID)",
-                "match_keyword": "识别关键字 (如: 一、单项选择题)",
-                "name": "报表列名 (如: 单选得分)",
-                "score": st.column_config.NumberColumn("每题分值", min_value=0, max_value=100, step=0.5),
-                "num_questions": st.column_config.NumberColumn("题目数量", min_value=1, max_value=100, step=1, help="该题型包含的题目数量")
-            },
-            num_rows="dynamic",
-            width='stretch',
-            key="config_editor_widget"
-        )
+    if st.session_state.last_provider != provider:
+        st.session_state.last_provider = provider
+        if provider != "Custom":
+            default_base_url = current_defaults['base_url']
+            default_model = current_defaults['model']
+        else:
+            # 切换到Custom时保持当前值
+            default_base_url = st.session_state.llm_config.get('base_url', '')
+            default_model = st.session_state.llm_config.get('model', '')
+    else:
+        # 保持当前session_state中的值（如果有的话），或者是当前的输入值
+        # 这里为了简化，我们直接取 llm_config 的值作为默认值，
+        # 但如果用户点击了保存才更新 llm_config。
+        # 这里实际上 text_input 的 value 参数只是初始值。
         
-        # 添加"应用配置"按钮，只有点击后才更新配置
-        if st.button("✅ 应用配置变更", key="apply_config_btn", help="点击保存对题型配置的修改"):
-            st.session_state.exam_config_df = edited_df
-            st.session_state.exam_config = edited_df.to_dict('records')
-            st.session_state.last_row_count = len(edited_df)
-            st.success("配置已更新！")
-            st.rerun()
-        
-        # 如果 edited_df 有变化，提示用户保存
-        if not edited_df.equals(st.session_state.exam_config_df):
-            st.warning("⚠️ 配置已修改但未保存，请点击上方「应用配置变更」按钮")
+        # 更好的做法：使用 session state 的值作为 value，但如果 provider 改变了，我们可能需要重置这些值？
+        # 最简单的做法：
+        if provider != "Custom":
+             default_base_url = current_defaults['base_url']
+             default_model = current_defaults['model']
+        else:
+             default_base_url = st.session_state.llm_config.get('base_url', '')
+             default_model = st.session_state.llm_config.get('model', '')
 
-        # 下载模版功能
-        def generate_template(config):
-            content = "学号：       姓名：         机号：\n\n"
-            for item in config:
-                # 获取题目数量，如果没有则默认为5
-                num_q = item.get('num_questions', 5)
-                score_per_q = item.get('score', 0)
-                
-                content += f"{item['match_keyword']}（每题{score_per_q}分，共{num_q}题）\n"
-                
-                # 根据题目数量生成题号
-                for q_num in range(1, num_q + 1):
-                    content += f"{q_num}. \n"
-                content += "\n"
-            return content
-
-        template_txt = generate_template(st.session_state.exam_config)
-        st.download_button(
-            label="📥 下载答题卡模版",
-            data=template_txt,
-            file_name="答题卡模版.txt",
-            mime="text/plain",
-            help="根据当前配置生成标准格式的答题卡模版"
-        )
-        
-    with col_up:
-        st.success("📂 文件上传区域")
-        # 标准答案
-        std_file = st.file_uploader("1. 上传标准答案 (txt)", type=['txt'], key="std")
-        if std_file:
-            try:
-                content = std_file.getvalue().decode("utf-8")
-            except:
-                content = std_file.getvalue().decode("gbk")
-            # 传递配置
-            status, data = parse_text_content(content, st.session_state.exam_config)
-            if status:
-                st.session_state.standard_key = data
-                st.caption(f"✅ 标准答案解析成功，共 {len(data)} 道题")
-                with st.expander("查看标准答案详情"):
-                    st.write(data)
-            else:
-                st.error(f"标准答案解析失败: {data}")
-
-        # 学生答卷
-        # 清空按钮与上传组件
-        c_up_header, c_up_btn = st.columns([0.7, 0.3])
-        c_up_header.write("2. 上传学生答卷 (多选 txt)")
-        if c_up_btn.button("🗑️ 清空列表"):
-            st.session_state.uploader_key += 1
-            st.session_state.processed_data = []
-            st.session_state.error_files = {}
-            st.rerun()
+    # LLM配置表单（始终显示）
+    llm_base_url = st.text_input(
+        "API Base URL", 
+        value=default_base_url,
+        help="支持OpenAI兼容接口"
+    )
+    llm_api_key = st.text_input(
+        "API Key", 
+        value=st.session_state.llm_config['api_key'],
+        type="password",
+        help="您的API密钥"
+    )
+    llm_model = st.text_input(
+        "Model", 
+        value=default_model,
+        help="例如: deepseek-chat, gpt-4o"
+    )
+    llm_temperature = st.slider(
+        "Temperature", 
+        min_value=0.0, 
+        max_value=1.0, 
+        value=st.session_state.llm_config['temperature'],
+        step=0.1,
+        help="控制生成的随机性，0为确定性，1为高随机性"
+    )
+    
+    if st.button("💾 保存LLM配置"):
+        st.session_state.llm_config = {
+            'base_url': llm_base_url,
+            'api_key': llm_api_key,
+            'model': llm_model,
+            'temperature': llm_temperature,
+            'max_tokens': 500
+        }
+        # 同步保存到文件
+        if save_llm_config(st.session_state.llm_config):
+            st.success("✅ LLM配置已保存并持久化!")
+            st.warning("⚠️ 保存到文件失败，下次启动时可能丢失")
             
-        student_files = st.file_uploader("2. 上传学生答卷 (多选 txt)", type=['txt'], accept_multiple_files=True, label_visibility="collapsed", key=f"stu_file_uploader_{st.session_state.uploader_key}")
+    # 连接测试
+    if st.button("🔗 测试连接"):
+        with st.spinner("正在连接API..."):
+            success, msg = test_llm_connection(st.session_state.llm_config)
+            if success:
+                st.success(f"✅ {msg}")
+            else:
+                st.error(f"❌ 连接失败: {msg}")
         
-        # 开始处理按钮
-        if st.button("🚀 开始批量阅卷", type="primary", width='stretch'):
-            if not st.session_state.standard_key:
-                st.warning("请先上传并解析标准答案！")
-            elif not student_files:
-                st.warning("请上传学生答卷！")
+    # 显示配置状态
+    if has_subjective:
+        if st.session_state.llm_config['api_key']:
+            st.success("✅ API Key已配置")
+        else:
+            st.warning("⚠️ 请配置API Key以批改主观题")
+    
+    st.divider()
+    st.caption("💡 使用说明：在配置表中选择「主观题」→ 填写参考答案 → 配置LLM API → 批量阅卷")
+
+# --- Tab 1: 考试设置 ---
+with tab1:
+    st.info("📝 考试题型与分值配置")
+    exam_name_input = st.text_input("考试名称 (归档标签)", "2025_AI_Midterm")
+    
+    st.markdown("###### 题型配置表 (可增删改)")
+    # 使用 Data Editor 允许用户修改配置
+    edited_df = st.data_editor(
+        st.session_state.exam_config_df,
+        column_config={
+            "section_id": "序号(ID)",
+            "match_keyword": "识别关键字 (如: 一、单项选择题)",
+            "name": "报表列名 (如: 单选得分)",
+            "score": st.column_config.NumberColumn("每题分值", min_value=0, max_value=100, step=0.5),
+            "num_questions": st.column_config.NumberColumn("题目数量", min_value=1, max_value=100, step=1, help="该题型包含的题目数量"),
+            "question_type": st.column_config.SelectboxColumn("题型", options=["客观题", "主观题"], required=True, default="客观题")
+        },
+        num_rows="dynamic",
+        width='stretch',
+        key="config_editor_widget"
+    )
+    
+    # 保存配置变更
+    if st.button("✅ 应用配置变更"):
+        # 转换为List[Dict]
+        new_config = edited_df.to_dict('records')
+        # 自动补充 section_id
+        for i, sec in enumerate(new_config):
+            sec['section_id'] = str(i+1)
+        
+        st.session_state.exam_config = new_config
+        st.session_state.exam_config_df = edited_df
+        st.session_state.last_row_count = len(edited_df)
+        
+        # 同步保存到文件
+        if save_exam_config(new_config):
+            st.success("配置已更新并持久化！")
+        else:
+            st.success("配置已更新！")
+            st.warning("⚠️ 保存到文件失败")
+        st.rerun()
+    
+    # --- 新增：主观题少样本示例配置 ---
+    if has_subjective:
+        with st.expander("🧠 主观题少样本示例配置 (Few-Shot)", expanded=False):
+            st.caption("添加教师自动批改的满分/典型示例，帮助LLM学习您的评分标准")
+            
+            # 生成所有主观题的小题列表 (question_key: section_id-question_num)
+            sub_questions = []
+            for sec in st.session_state.exam_config:
+                if sec.get('question_type') == '主观题':
+                    sec_id = sec['section_id']
+                    sec_name = sec['match_keyword']
+                    num_questions = sec.get('num_questions', 1)
+                    for q_num in range(1, num_questions + 1):
+                        q_key = f"{sec_id}-{q_num}"
+                        display_name = f"{sec_name} - 第{q_num}题"
+                        sub_questions.append((q_key, display_name))
+            
+            if sub_questions:
+                selected_question = st.selectbox("选择题目", options=sub_questions, format_func=lambda x: x[1])
+                selected_q_key = selected_question[0]
+                
+                # 显示现有示例
+                current_examples = st.session_state.few_shot_examples.get(selected_q_key, [])
+                if current_examples:
+                    st.markdown("###### 已添加示例：")
+                    for i, ex in enumerate(current_examples):
+                        with st.container():
+                            st.text(f"示例 {i+1} [得分: {ex['score']}]")
+                            st.caption(f"答案: {ex['student_answer'][:50]}...")
+                            if st.button(f"🗑️ 删除示例 {i+1}", key=f"del_ex_{selected_q_key}_{i}"):
+                                current_examples.pop(i)
+                                st.session_state.few_shot_examples[selected_q_key] = current_examples
+                                st.rerun()
+                            st.divider()
+                
+                # 添加新示例表单
+                st.markdown("###### 添加新示例")
+                with st.form(key=f"add_ex_form_{selected_q_key}"):
+                    ex_answer = st.text_area("学生示例答案", height=100)
+                    c1, c2 = st.columns([1, 2])
+                    ex_score = c1.number_input("教师评分", min_value=0.0, step=0.5)
+                    ex_comment = c2.text_input("教师评语 (可选)")
+                    
+                    if st.form_submit_button("➕ 添加示例"):
+                        if not ex_answer:
+                            st.error("答案不能为空！")
+                        else:
+                            if selected_q_key not in st.session_state.few_shot_examples:
+                                st.session_state.few_shot_examples[selected_q_key] = []
+                            
+                            st.session_state.few_shot_examples[selected_q_key].append({
+                                "student_answer": ex_answer,
+                                "score": ex_score,
+                                "comment": ex_comment
+                            })
+                            st.success("示例添加成功！")
+                            st.rerun()
+                
+                # 示例管理功能
+                st.divider()
+                st.markdown("###### 示例管理")
+                col_save, col_load = st.columns(2)
+                
+                with col_save:
+                    if st.button("💾 保存当前示例", width='stretch'):
+                        if st.session_state.few_shot_examples:
+                            result = save_few_shot_examples(exam_name_input, st.session_state.few_shot_examples)
+                            if result[0]:
+                                st.success(f"✅ 示例已保存: {result[1]}")
+                            else:
+                                st.error("❌ 保存失败")
+                        else:
+                            st.warning("⚠️ 没有可保存的示例")
+                
+                with col_load:
+                    example_files = list_example_files()
+                    if example_files:
+                        selected_file = st.selectbox(
+                            "加载历史示例", 
+                            options=example_files,
+                            label_visibility="collapsed",
+                            key="load_examples_select"
+                        )
+                        if st.button("📥 加载示例", width='stretch'):
+                            # 从文件名提取考试名
+                            exam_name_from_file = selected_file.rsplit('_', 2)[0]
+                            loaded_examples = load_few_shot_examples(exam_name_from_file)
+                            if loaded_examples:
+                                st.session_state.few_shot_examples = loaded_examples
+                                st.success(f"✅ 已加载 {len(loaded_examples)} 个题目的示例")
+                                st.rerun()
+                            else:
+                                st.error("❌ 加载失败")
+                    else:
+                        st.caption("暂无历史示例")
+            else:
+                st.warning("暂无配置为主观题的题目")
+    
+    # 如果 edited_df 有变化，提示用户保存
+    if not edited_df.equals(st.session_state.exam_config_df):
+        st.warning("⚠️ 配置已修改但未保存，请点击上方「应用配置变更」按钮")
+
+    # 下载模版功能
+    def generate_template(config):
+        content = "学号：       姓名：         机号：\n\n"
+        for item in config:
+            # 获取题目数量，如果没有则默认为5
+            num_q = item.get('num_questions', 5)
+            score_per_q = item.get('score', 0)
+            
+            content += f"{item['match_keyword']}（每题{score_per_q}分，共{num_q}题）\n"
+            
+            # 根据题目数量生成题号
+            for q_num in range(1, num_q + 1):
+                content += f"{q_num}. \n"
+            content += "\n"
+        return content
+
+    template_txt = generate_template(st.session_state.exam_config)
+    st.download_button(
+        label="📥 下载答题卡模版",
+        data=template_txt,
+        file_name="答题卡模版.txt",
+        mime="text/plain",
+        help="根据当前配置生成标准格式的答题卡模版"
+    )
+    
+# --- Tab 2: 答卷上传 ---
+with tab2:
+    st.success("📂 文件上传区域")
+    # 标准答案
+    std_file = st.file_uploader("1. 上传标准答案 (txt)", type=['txt'], key="std")
+    if std_file:
+        try:
+            content = std_file.getvalue().decode("utf-8")
+        except:
+            content = std_file.getvalue().decode("gbk")
+        # 传递配置
+        status, data = parse_text_content(content, st.session_state.exam_config)
+        if status:
+            st.session_state.standard_key = data
+            st.caption(f"✅ 标准答案解析成功，共 {len(data)} 道题")
+            with st.expander("查看标准答案详情"):
+                st.write(data)
+        else:
+            st.error(f"标准答案解析失败: {data}")
+
+    # 学生答卷
+    # 清空按钮与上传组件
+    c_up_header, c_up_btn = st.columns([0.7, 0.3])
+    c_up_header.write("2. 上传学生答卷 (多选 txt)")
+    if c_up_btn.button("🗑️ 清空列表"):
+        st.session_state.uploader_key += 1
+        st.session_state.processed_data = []
+        st.session_state.error_files = {}
+        st.rerun()
+        
+    student_files = st.file_uploader("2. 上传学生答卷 (多选 txt)", type=['txt'], accept_multiple_files=True, label_visibility="collapsed", key=f"stu_file_uploader_{st.session_state.uploader_key}")
+    
+    # 开始处理按钮
+    if st.button("🚀 开始批量阅卷", type="primary", width='stretch'):
+        if not st.session_state.standard_key:
+            st.warning("请先上传并解析标准答案！")
+        elif not student_files:
+            st.warning("请上传学生答卷！")
+        else:
+            # 检查是否有主观题
+            has_subjective = any(sec.get('question_type') == '主观题' for sec in st.session_state.exam_config)
+            
+            # 如果有主观题，检查LLM配置
+            if has_subjective and not st.session_state.llm_config.get('api_key'):
+                st.error("❌ 配置中包含主观题，但未配置LLM API Key！请在左侧边栏配置。")
             else:
                 processed = []
                 errors = {}
+                progress_placeholder = st.empty()
                 progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                # 第一阶段：解析所有学生答卷
+                status_text.info("📖 阶段1/2: 解析学生答卷...")
+                students_data = []
                 
                 for idx, file in enumerate(student_files):
-                    progress_bar.progress((idx + 1) / len(student_files))
+                    progress_bar.progress((idx + 1) / len(student_files) / 2)  # 前50%进度
                     try: 
                         content = file.getvalue().decode("utf-8")
                     except: 
@@ -396,16 +1104,119 @@ with tab1:
                     # 传递配置
                     status, res = parse_text_content(content, st.session_state.exam_config)
                     if status:
-                        # 传递配置
-                        rec = calculate_score(res, st.session_state.standard_key, st.session_state.exam_config)
-                        processed.append(rec)
+                        students_data.append(res)
                     else:
                         errors[file.name] = res
                 
-                st.session_state.processed_data = processed
-                st.session_state.error_files = errors
-                st.toast(f"处理完成！成功: {len(processed)}, 失败: {len(errors)}", icon="🎉")
-                st.info("请切换到【批改结果】标签页查看详情 👉")
+                # 第二阶段：批改（包括主观题LLM批改）
+                if students_data:
+                    if has_subjective:
+                        status_text.info("🤖 阶段2/2: 批改主观题（调用LLM）...")
+                        
+                        # 清空之前的主观题详情
+                        st.session_state.subjective_details = []
+                        
+                        # 创建进度展示容器
+                        progress_detail_container = st.container()
+                        
+                        # 为每个学生批改主观题
+                        for idx, student_data in enumerate(students_data):
+                            progress_bar.progress(0.5 + (idx + 1) / len(students_data) / 2)  # 后50%进度
+                            
+                            # 显示当前批改学生信息
+                            with progress_detail_container:
+                                with st.expander(f"📝 正在批改: {student_data.get('学号')} - {student_data.get('姓名', '未知')} ({idx + 1}/{len(students_data)})", expanded=True):
+                                    current_student_info = st.empty()
+                            
+                            # 为这个学生批改所有主观题
+                            llm_graded = {}
+                            for sec in st.session_state.exam_config:
+                                if sec.get('question_type') == '主观题':
+                                    sec_id = sec.get('section_id')
+                                    num_questions = sec.get('num_questions', 1)
+                                    grading_criteria = sec.get('grading_criteria', '')
+                                    max_score = sec.get('score', 0)
+                                    question_text = sec.get('match_keyword', '')
+                                    
+                                    for q_num in range(1, num_questions + 1):
+                                        q_key = f"{sec_id}-{q_num}"
+                                        student_answer = student_data.get(q_key, '')
+                                        
+                                        # 从standard_key获取参考答案
+                                        reference_answer = st.session_state.standard_key.get(q_key, '')
+                                        
+                                        if not student_answer:
+                                            llm_graded[q_key] = {'score': 0.0, 'comment': '未作答'}
+                                            continue
+                                        
+                                        # 获取 Few-Shot 示例（按小题级别 q_key）
+                                        examples = st.session_state.few_shot_examples.get(q_key, [])
+                                        
+                                        # 调用LLM批改
+                                        success, score, comment = grade_subjective_question(
+                                            question_text=f"{question_text} 第{q_num}题",
+                                            reference_answer=reference_answer,
+                                            student_answer=student_answer,
+                                            max_score=max_score,
+                                            grading_criteria=grading_criteria,
+                                            api_config=st.session_state.llm_config,
+                                            examples=examples
+                                        )
+                                        
+                                        if success:
+                                            llm_graded[q_key] = {'score': score, 'comment': comment}
+                                            
+                                            # 保存到主观题详情
+                                            st.session_state.subjective_details.append({
+                                                '学号': student_data.get('学号'),
+                                                '姓名': student_data.get('姓名'),
+                                                '题目': f"{question_text} 第{q_num}题",
+                                                'q_key': q_key,
+                                                '学生答案': student_answer,
+                                                '参考答案': reference_answer,
+                                                '评分': score,
+                                                '满分': max_score,
+                                                '评语': comment
+                                            })
+                                            
+                                            # 更新进度显示
+                                            with progress_detail_container:
+                                                with current_student_info:
+                                                    st.success(f"✅ {question_text} 第{q_num}题 - 评分: {score}/{max_score}")
+                                        else:
+                                            llm_graded[q_key] = {'score': 0.0, 'comment': f'批改失败: {comment}'}
+                                            
+                                            # 保存失败记录
+                                            st.session_state.subjective_details.append({
+                                                '学号': student_data.get('学号'),
+                                                '姓名': student_data.get('姓名'),
+                                                '题目': f"{question_text} 第{q_num}题",
+                                                'q_key': q_key,
+                                                '学生答案': student_answer,
+                                                '参考答案': reference_answer,
+                                                '评分': 0.0,
+                                                '满分': max_score,
+                                                '评语': f'批改失败: {comment}'
+                                            })
+                            
+                            # 计算总分（包括客观题和主观题）- 在for sec循环外
+                            rec = calculate_score(student_data, st.session_state.standard_key, st.session_state.exam_config, llm_graded)
+                            processed.append(rec)
+                    else:
+                        # 只有客观题，快速批改
+                        status_text.info("✅ 阶段2/2: 批改客观题...")
+                        for idx, student_data in enumerate(students_data):
+                            progress_bar.progress(0.5 + (idx + 1) / len(students_data) / 2)
+                            rec = calculate_score(student_data, st.session_state.standard_key, st.session_state.exam_config)
+                            processed.append(rec)
+                    
+                    progress_bar.empty()
+                    status_text.empty()
+                    
+                    st.session_state.processed_data = processed
+                    st.session_state.error_files = errors
+                    st.toast(f"处理完成！成功: {len(processed)}, 失败: {len(errors)}", icon="🎉")
+                    st.info("请切换到【批改结果】标签页查看详情 👉")
         
         # 数据库状态提示
         st.divider()
@@ -417,8 +1228,8 @@ with tab1:
                 st.session_state.db_available = True
                 st.rerun()
 
-# --- Tab 2: 批改结果 ---
-with tab2:
+# --- Tab 3: 批改结果 ---
+with tab3:
     # 异常文件显示 (优先显示)
     if st.session_state.error_files:
         st.error(f"⚠️ 发现 {len(st.session_state.error_files)} 个格式错误文件，请核查：")
@@ -493,14 +1304,14 @@ with tab2:
                     color_continuous_scale='Greens'
                 )
                 fig_rate.update_layout(height=350, showlegend=False)
-                st.plotly_chart(fig_rate, use_container_width=True)
+                st.plotly_chart(fig_rate, width='stretch')
             else:
                 st.info("无法计算得分率")
 
             st.markdown("##### 📈 总分分布")
             fig = px.histogram(df, x="总分", nbins=10, color_discrete_sequence=['#4b6cb7'])
             fig.update_layout(showlegend=False, margin=dict(l=20, r=20, t=20, b=20), height=300)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             
         with c_data:
             st.markdown("##### 📋 成绩明细")
@@ -508,11 +1319,54 @@ with tab2:
     else:
         if not st.session_state.error_files:
             st.empty()
-            st.info("👈 请在【设置 & 上传】页进行阅卷操作")
+            st.info("👈 请在【答卷上传】页进行阅卷操作")
 
-# --- Tab 3: 数据库与历史 ---
-if st.session_state.db_available and tab3 is not None:
-    with tab3:
+# --- Tab 4: 主观题详情 ---
+with tab4:
+    st.header("🤖 主观题批改详情")
+    
+    if st.session_state.subjective_details:
+        st.success(f"共批改 {len(st.session_state.subjective_details)} 个主观题")
+        
+        # 按学生分组显示
+        students = {}
+        for detail in st.session_state.subjective_details:
+            student_id = detail['学号']
+            if student_id not in students:
+                students[student_id] = {
+                    '姓名': detail['姓名'],
+                    '题目': []
+                }
+            students[student_id]['题目'].append(detail)
+        
+        # 显示每个学生的主观题批改详情
+        for student_id, info in students.items():
+            with st.expander(f"👤 {student_id} - {info['姓名']} (共{len(info['题目'])}题)"):
+                for idx, detail in enumerate(info['题目'], 1):
+                    st.markdown(f"### 题目 {idx}: {detail['题目']}")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**学生答案**")
+                        st.text_area("学生答案", detail['学生答案'], height=100, disabled=True, key=f"ans_{student_id}_{idx}", label_visibility="collapsed")
+                    with col2:
+                        st.markdown("**参考答案**")
+                        st.text_area("参考答案", detail['参考答案'], height=100, disabled=True, key=f"ref_{student_id}_{idx}", label_visibility="collapsed")
+                    
+                    # 显示评分结果
+                    score_col1, score_col2 = st.columns([1, 3])
+                    with score_col1:
+                        st.metric("评分", f"{detail['评分']}/{detail['满分']}", delta=None)
+                    with score_col2:
+                        st.info(f"💬 **评语**: {detail['评语']}")
+                    
+                    st.divider()
+    else:
+        st.info("⚡ 请先在【答卷上传】页面上传并批改包含主观题的答卷")
+
+# --- Tab 5: 数据库与历史 ---
+if tab5 is not None:
+    with tab5:
         col_db_conn, col_history = st.columns([1, 4])
         
         with col_db_conn:
