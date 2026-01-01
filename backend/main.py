@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from backend.routers import config, upload, grade, history
+from backend.routers import config, upload, grade, history, settings
 
 app = FastAPI(title="Smart Grading System Pro API")
 
@@ -25,6 +25,7 @@ app.include_router(config.router)
 app.include_router(upload.router)
 app.include_router(grade.router)
 app.include_router(history.router)
+app.include_router(settings.router)
 
 @app.get("/")
 def read_root():

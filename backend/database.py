@@ -43,5 +43,12 @@ def get_engine():
         _engine = get_db_engine()
     return _engine
 
+def reload_engine():
+    global _engine
+    if _engine:
+        _engine.dispose()
+    _engine = get_db_engine()
+    return _engine
+
 def is_db_available():
     return get_engine() is not None

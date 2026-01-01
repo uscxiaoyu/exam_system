@@ -1,7 +1,7 @@
 import re
 from typing import Dict, List, Tuple, Any
 
-def parse_text_content(content: str, exam_config: List[Dict]) -> Tuple[bool, Any]:
+def parse_text_content(content: str, exam_config: List[Dict], parser_config: Dict = None) -> Tuple[bool, Any]:
     """
     解析单个学生答题卡文本内容
     返回: (status, data/error_msg)
@@ -9,11 +9,22 @@ def parse_text_content(content: str, exam_config: List[Dict]) -> Tuple[bool, Any
     if not content or not content.strip():
         return False, "文件内容为空"
 
+    # Default regexes
+    header_regex = r"学号[：:]\s*(.*?)\s+姓名[：:]\s*(.*?)\s+机号[：:]\s*(.*)"
+    question_regex = r"(\d+)\.\s*([a-zA-Z0-9_\u4e00-\u9fa5]+)?"
+
+    if parser_config:
+        header_regex = parser_config.get("header_regex", header_regex)
+        question_regex = parser_config.get("question_regex", question_regex)
+
     student_data = {}
     lines = [line.strip() for line in content.split('\n')]
 
     # 1. 提取头部信息 (学号、姓名、机号)
-    header_pattern = re.compile(r"学号[：:]\s*(.*?)\s+姓名[：:]\s*(.*?)\s+机号[：:]\s*(.*)")
+    try:
+        header_pattern = re.compile(header_regex)
+    except re.error:
+        return False, "头部正则表达式错误"
 
     header_match = None
     for i in range(min(5, len(lines))): # 搜索前5行
@@ -23,13 +34,26 @@ def parse_text_content(content: str, exam_config: List[Dict]) -> Tuple[bool, Any
             break
 
     if not header_match:
-        return False, "头部信息缺失 (需包含: 学号:xxx 姓名:xxx 机号:xxx)"
+        return False, f"头部信息缺失 (匹配规则: {header_regex})"
 
-    student_data['学号'] = header_match.group(1).strip()
-    student_data['姓名'] = header_match.group(2).strip()
-    student_data['机号'] = header_match.group(3).strip()
+    try:
+        # Assuming regex has 3 groups: ID, Name, Machine
+        # This is a bit strict, maybe we should use named groups or just position 1,2,3
+        if header_pattern.groups < 3:
+             return False, "头部正则必须包含3个捕获组 (学号, 姓名, 机号)"
+
+        student_data['学号'] = header_match.group(1).strip()
+        student_data['姓名'] = header_match.group(2).strip()
+        student_data['机号'] = header_match.group(3).strip()
+    except IndexError:
+         return False, "头部信息提取失败"
 
     # 2. 定义各题型的正则提取逻辑
+    try:
+        q_pattern = re.compile(question_regex)
+    except re.error:
+        return False, "题目正则表达式错误"
+
     full_text = content
 
     # 使用配置中的题目定义
@@ -56,7 +80,7 @@ def parse_text_content(content: str, exam_config: List[Dict]) -> Tuple[bool, Any
             lines_in_section = section_text.split('\n')
             for line in lines_in_section:
                 # 匹配 "1. A" 或 "1.A"
-                matches = re.findall(r'(\d+)\.\s*([a-zA-Z0-9_\u4e00-\u9fa5]+)?', line)
+                matches = q_pattern.findall(line)
                 for q_num, ans in matches:
                     key = f"{sec_id}-{q_num}"
                     ans = ans.strip().upper() if ans else ""

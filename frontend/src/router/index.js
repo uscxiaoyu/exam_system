@@ -3,6 +3,7 @@ import ConfigView from '../views/ConfigView.vue'
 import UploadView from '../views/UploadView.vue'
 import ResultsView from '../views/ResultsView.vue'
 import HistoryView from '../views/HistoryView.vue'
+import SettingsView from '../views/SettingsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -26,6 +27,11 @@ const router = createRouter({
       path: '/history',
       name: 'history',
       component: HistoryView
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: SettingsView
     }
   ]
 })

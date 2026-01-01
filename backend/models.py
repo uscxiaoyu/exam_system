@@ -41,6 +41,20 @@ class GradingResult(BaseModel):
     score: float
     comment: str
 
+class DBConfig(BaseModel):
+    user: str = "root"
+    password: str = ""
+    host: str = "localhost"
+    port: int = 3306
+    db_name: str = "grade_system"
+
+class ParserConfig(BaseModel):
+    # Default header regex: matches "学号: xxx 姓名: xxx 机号: xxx"
+    # Note: Regex backslashes need to be handled carefully in JSON/String
+    header_regex: str = r"学号[：:]\s*(.*?)\s+姓名[：:]\s*(.*?)\s+机号[：:]\s*(.*)"
+    # Default question regex: matches "1. A" or "1.A"
+    question_regex: str = r"(\d+)\.\s*([a-zA-Z0-9_\u4e00-\u9fa5]+)?"
+
 class StudentData(BaseModel):
     student_id: str = Field(alias='学号')
     name: str = Field(alias='姓名')

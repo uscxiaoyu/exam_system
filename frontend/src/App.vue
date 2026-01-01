@@ -25,6 +25,10 @@
           <el-icon><Files /></el-icon>
           <span>历史记录</span>
         </el-menu-item>
+        <el-menu-item index="settings" :route="{name: 'settings'}">
+          <el-icon><Tools /></el-icon>
+          <span>系统配置</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -53,6 +57,7 @@ const pageTitle = computed(() => {
     case 'upload': return '上传与阅卷';
     case 'results': return '成绩分析';
     case 'history': return '历史归档';
+    case 'settings': return '系统配置';
     default: return '智能阅卷系统';
   }
 });

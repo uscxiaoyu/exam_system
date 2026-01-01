@@ -59,24 +59,9 @@
 
     </el-card>
 
-    <el-card class="mt-20" v-if="hasSubjective">
-       <template #header>
-        <div class="card-header">
-          <span>LLM 配置 (主观题批改)</span>
-        </div>
-      </template>
-      <el-form label-width="120px">
-         <el-form-item label="Base URL">
-            <el-input v-model="examStore.llmConfig.base_url" />
-         </el-form-item>
-         <el-form-item label="API Key">
-            <el-input v-model="examStore.llmConfig.api_key" type="password" show-password />
-         </el-form-item>
-         <el-form-item label="Model">
-            <el-input v-model="examStore.llmConfig.model" />
-         </el-form-item>
-      </el-form>
-    </el-card>
+    <div class="mt-20" v-if="hasSubjective">
+       <el-alert title="检测到主观题：请在「系统配置」页面配置 LLM (大语言模型) 以启用智能批改" type="info" show-icon :closable="false" />
+    </div>
   </div>
 </template>
 
