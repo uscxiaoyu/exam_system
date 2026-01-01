@@ -126,3 +126,19 @@ WARNING:  StatReload detected changes in 'backend/database.py'. Reloading...
 INFO:     Started server process [11042]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'backend/routers/grade.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11042]
+INFO:     Started server process [13545]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'backend/routers/history.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [13545]
+INFO:     Started server process [13578]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

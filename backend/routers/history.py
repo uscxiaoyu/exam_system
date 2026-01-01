@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Dict, Any
 from backend.database import get_engine, is_db_available
+from backend.utils import generate_excel_bytes
 import json
 import pandas as pd
+import io
 
 router = APIRouter(prefix="/api/history", tags=["history"])
 
@@ -30,20 +33,43 @@ async def get_exam_history(exam_name: str):
 
     engine = get_engine()
     try:
-        query = text("SELECT student_id, student_name, total_score, details_json, created_at FROM exam_records WHERE exam_name=:name")
+        query = text("SELECT student_id, student_name, machine_id, total_score, details_json, created_at FROM exam_records WHERE exam_name=:name")
         df = pd.read_sql(query, engine, params={"name": exam_name})
 
         # Process JSON details
         records = df.to_dict(orient="records")
+        final_records = []
         for rec in records:
+            # Map back to UI keys
+            ui_rec = {
+                "学号": rec["student_id"],
+                "姓名": rec["student_name"],
+                "机号": rec["machine_id"],
+                "总分": rec["total_score"],
+                "created_at": str(rec["created_at"])
+            }
             if rec.get("details_json"):
                 try:
                     details = json.loads(rec["details_json"])
-                    rec.update(details)
-                    del rec["details_json"]
+                    ui_rec.update(details)
                 except:
                     pass
-        return records
+            final_records.append(ui_rec)
+        return final_records
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{exam_name}/export")
+async def export_exam_history(exam_name: str):
+    # Reuse get_exam_history logic
+    records = await get_exam_history(exam_name)
+    try:
+        excel_io = generate_excel_bytes(records)
+        return Response(
+            content=excel_io.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={exam_name}.xlsx"}
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -142,6 +142,28 @@ export const useExamStore = defineStore('exam', {
         } catch (err) {
              return { success: false, message: err.response?.data?.detail || "DB Error" };
         }
+    },
+
+    async exportResults(data) {
+        if (!data || data.length === 0) return { success: false, message: "No data to export" };
+        try {
+            const response = await axios.post(`${API_BASE}/grade/export`, data, {
+                responseType: 'blob'
+            });
+
+            // Trigger download
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', '成绩表.xlsx');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            return { success: true };
+        } catch (err) {
+            return { success: false, message: "Export failed" };
+        }
     }
   }
 });

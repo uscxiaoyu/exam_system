@@ -33,6 +33,10 @@
              <!-- Dynamic score columns could be added here similar to ResultsView -->
          </el-table>
 
+         <div v-if="historyData.length > 0" class="mt-20">
+             <el-button type="primary" @click="exportHistoryExcel">📤 导出 Excel</el-button>
+         </div>
+
          <el-empty v-else description="请选择考试查看详情" />
       </div>
     </el-card>
@@ -42,6 +46,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
+import { ElMessage } from 'element-plus';
 
 const API_BASE = 'http://localhost:8000/api';
 const examList = ref([]);
@@ -70,6 +75,24 @@ const loadExamData = async () => {
         historyData.value = res.data;
     } catch (err) {
         console.error(err);
+    }
+};
+
+const exportHistoryExcel = async () => {
+    if (!selectedExam.value) return;
+    try {
+        const response = await axios.get(`${API_BASE}/history/${selectedExam.value}/export`, {
+            responseType: 'blob'
+        });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `${selectedExam.value}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    } catch (err) {
+        ElMessage.error('导出失败');
     }
 };
 

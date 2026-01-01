@@ -1,10 +1,27 @@
 from fastapi import APIRouter, HTTPException, Body
+from fastapi.responses import Response
 from typing import List, Dict, Any
 from backend.models import StudentData, ExamConfig, SubjectiveGradingRequest, GradingResult
 from backend.services.core import calculate_score
 from backend.services.llm import grade_subjective_question
+from backend.utils import generate_excel_bytes
 
 router = APIRouter(prefix="/api/grade", tags=["grade"])
+
+@router.post("/export")
+async def export_grades(data: List[Dict] = Body(...)):
+    if not data:
+        raise HTTPException(status_code=400, detail="No data to export")
+
+    try:
+        excel_io = generate_excel_bytes(data)
+        return Response(
+            content=excel_io.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=grades.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/batch")
 async def batch_grade(
