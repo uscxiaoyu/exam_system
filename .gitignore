@@ -1,3 +1,7 @@
 .ipynb_checkpoints/*
 __pycache__/*
 config/*
+backend/config/*
+frontend/node_modules/*
+backend/__pycache__/*
+*.pyc
