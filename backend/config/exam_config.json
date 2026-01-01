@@ -1,0 +1,15 @@
+{
+  "exam_name": "Test",
+  "sections": [
+    {
+      "section_id": "1",
+      "match_keyword": "Part 1",
+      "name": "S1",
+      "score": 1.0,
+      "num_questions": 1,
+      "question_type": "客观题",
+      "grading_criteria": null,
+      "reference_answer": null
+    }
+  ]
+}

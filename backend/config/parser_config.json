@@ -1,0 +1,4 @@
+{
+  "header_regex": "ID:(.*?)\\s+Name:(.*?)\\s+M:(.*)",
+  "question_regex": "Q(\\d+)\\.(.*)"
+}
