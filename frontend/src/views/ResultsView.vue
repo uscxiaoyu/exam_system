@@ -39,6 +39,7 @@
            <el-card>
               <div class="actions-panel">
                  <el-button type="success" @click="saveToDB">💾 保存成绩到数据库</el-button>
+                 <el-button type="primary" @click="exportExcel">📤 导出 Excel 表格</el-button>
                  <el-button type="warning" @click="triggerSubjectiveGrading" v-if="hasSubjective">🤖 LLM 主观题批改</el-button>
               </div>
            </el-card>
@@ -202,6 +203,11 @@ const saveToDB = async () => {
     const res = await examStore.saveToDB();
     if (res.success) ElMessage.success(res.message);
     else ElMessage.error(res.message);
+};
+
+const exportExcel = async () => {
+    const res = await examStore.exportResults(results.value);
+    if (!res.success) ElMessage.error(res.message);
 };
 
 const triggerSubjectiveGrading = async () => {
