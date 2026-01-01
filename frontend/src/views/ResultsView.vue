@@ -240,7 +240,23 @@ const triggerSubjectiveGrading = async () => {
 .metric { font-size: 24px; font-weight: bold; color: #409eff; text-align: center; }
 .mt-20 { margin-top: 20px; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
-.actions-panel { display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; height: 100%;}
+.actions-panel { 
+    display: flex; 
+    flex-direction: row; 
+    gap: 15px; 
+    align-items: center; 
+    justify-content: center; 
+    height: 300px; /* Match chart height */
+}
+.actions-panel .el-button {
+    flex: 1;
+    height: 60px;
+    font-size: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-left: 0 !important; /* Override element-plus default margin */
+}
 .question-item { border-bottom: 1px solid #eee; padding: 10px 0; }
 .q-header { display: flex; justify-content: space-between; }
 .score-tag { font-weight: bold; color: #67c23a; }

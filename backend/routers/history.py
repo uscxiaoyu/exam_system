@@ -73,11 +73,18 @@ async def export_exam_history(exam_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+from pydantic import BaseModel
+
+class HistorySaveRequest(BaseModel):
+    exam_name: str
+    records: List[Dict[str, Any]]
+
 @router.post("/")
 async def save_history(
-    exam_name: str,
-    records: List[Dict[str, Any]]
+    request: HistorySaveRequest
 ):
+    exam_name = request.exam_name
+    records = request.records
     if not is_db_available():
         raise HTTPException(status_code=503, detail="Database not available")
 
@@ -128,5 +135,23 @@ async def save_history(
         final_df.to_sql('exam_records', con=engine, if_exists='append', index=False)
 
         return {"message": f"Saved {len(final_df)} records"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{exam_name}")
+async def delete_history(exam_name: str):
+    if not is_db_available():
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    engine = get_engine()
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("DELETE FROM exam_records WHERE exam_name = :name"), {"name": exam_name})
+            conn.commit()
+            if result.rowcount == 0:
+                 raise HTTPException(status_code=404, detail="Exam not found")
+            return {"message": f"Deleted records for {exam_name}"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

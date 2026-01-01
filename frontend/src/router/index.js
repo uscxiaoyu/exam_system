@@ -1,22 +1,32 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import ConfigView from '../views/ConfigView.vue'
-import UploadView from '../views/UploadView.vue'
+import SettingsView from '../views/SettingsView.vue'
+import StudentUploadView from '../views/StudentUploadView.vue'
+import ObjectiveMarkingView from '../views/ObjectiveMarkingView.vue'
 import ResultsView from '../views/ResultsView.vue'
 import HistoryView from '../views/HistoryView.vue'
-import SettingsView from '../views/SettingsView.vue'
+import SubjectiveView from '../views/SubjectiveView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
-      name: 'config',
-      component: ConfigView
+      redirect: '/settings'
+    },
+    {
+      path: '/subjective',
+      name: 'subjective',
+      component: SubjectiveView
     },
     {
       path: '/upload',
       name: 'upload',
-      component: UploadView
+      component: StudentUploadView
+    },
+    {
+      path: '/objective',
+      name: 'objective',
+      component: ObjectiveMarkingView
     },
     {
       path: '/results',

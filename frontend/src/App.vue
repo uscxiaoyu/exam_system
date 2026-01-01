@@ -9,13 +9,17 @@
         class="el-menu-vertical"
         router
       >
-        <el-menu-item index="config" :route="{name: 'config'}">
-          <el-icon><Setting /></el-icon>
-          <span>考试设置</span>
-        </el-menu-item>
         <el-menu-item index="upload" :route="{name: 'upload'}">
           <el-icon><Upload /></el-icon>
-          <span>答卷上传 & 阅卷</span>
+          <span>学生答卷上传</span>
+        </el-menu-item>
+        <el-menu-item index="objective" :route="{name: 'objective'}">
+          <el-icon><CircleCheck /></el-icon>
+          <span>客观题阅卷</span>
+        </el-menu-item>
+        <el-menu-item index="subjective" :route="{name: 'subjective'}">
+          <el-icon><EditPen /></el-icon>
+          <span>主观题阅卷</span>
         </el-menu-item>
         <el-menu-item index="results" :route="{name: 'results'}">
           <el-icon><DataAnalysis /></el-icon>
@@ -26,7 +30,7 @@
           <span>历史记录</span>
         </el-menu-item>
         <el-menu-item index="settings" :route="{name: 'settings'}">
-          <el-icon><Tools /></el-icon>
+          <el-icon><Setting /></el-icon>
           <span>系统配置</span>
         </el-menu-item>
       </el-menu>
@@ -53,8 +57,9 @@ const route = useRoute();
 
 const pageTitle = computed(() => {
   switch(route.name) {
-    case 'config': return '考试配置';
-    case 'upload': return '上传与阅卷';
+    case 'upload': return '学生答卷上传';
+    case 'objective': return '客观题阅卷';
+    case 'subjective': return '主观题智能阅卷';
     case 'results': return '成绩分析';
     case 'history': return '历史归档';
     case 'settings': return '系统配置';

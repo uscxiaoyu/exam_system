@@ -2,6 +2,143 @@
   <div class="settings-view">
     <el-tabs type="border-card">
 
+      <!-- Exam Config (Merged) -->
+      <el-tab-pane label="答题卡配置">
+        <template #label>
+           <span class="custom-tabs-label">
+             <el-icon><Edit /></el-icon>
+             <span> 答题卡配置</span>
+           </span>
+        </template>
+        
+        <el-row :gutter="20">
+            <!-- Left Column: Settings -->
+            <el-col :span="14">
+                <el-form label-width="120px">
+                    <el-form-item label="考试名称">
+                      <el-input v-model="examStore.config.exam_name" placeholder="例如: 2025_期末考试" />
+                    </el-form-item>
+                </el-form>
+
+                <el-divider content-position="left">题型配置</el-divider>
+
+                <el-table :data="examStore.config.sections" border style="width: 100%">
+                    <el-table-column prop="section_id" label="ID" width="60" />
+                    <el-table-column label="识别关键字" min-width="150">
+                      <template #default="scope">
+                        <el-input v-model="scope.row.match_keyword" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="报表列名" min-width="100">
+                      <template #default="scope">
+                        <el-input v-model="scope.row.name" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="每题分值" width="100">
+                      <template #default="scope">
+                        <el-input-number v-model="scope.row.score" :min="0" :step="0.5" controls-position="right" style="width: 100%" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="数量" width="100">
+                      <template #default="scope">
+                        <el-input-number v-model="scope.row.num_questions" :min="1" controls-position="right" style="width: 100%" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="题型" width="110">
+                      <template #default="scope">
+                        <el-select v-model="scope.row.question_type">
+                          <el-option label="客观题" value="客观题" />
+                          <el-option label="主观题" value="主观题" />
+                        </el-select>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="60" align="center">
+                      <template #default="scope">
+                        <el-button type="danger" icon="Delete" circle size="small" @click="removeSection(scope.$index)" />
+                      </template>
+                    </el-table-column>
+                </el-table>
+
+                <div style="margin-top: 10px; margin-bottom: 20px;">
+                    <el-button @click="addSection" icon="Plus">添加题型</el-button>
+                </div>
+
+                <el-form-item>
+                    <el-button type="primary" @click="saveSettings">保存考试配置</el-button>
+                </el-form-item>
+                
+                <div class="mt-20" v-if="hasSubjective">
+                   <el-alert title="检测到主观题：请在「LLM 配置」页面配置 LLM (大语言模型) 以启用智能批改" type="info" show-icon :closable="false" />
+                </div>
+            </el-col>
+
+            <!-- Right Column: Template Preview -->
+            <el-col :span="10">
+               <el-card>
+                  <template #header>
+                     <div class="card-header">
+                        <span>答题卡模板预览</span>
+                        <el-button size="small" @click="downloadTemplate">下载模板</el-button>
+                     </div>
+                  </template>
+                  <pre class="template-preview">{{ templatePreview }}</pre>
+               </el-card>
+            </el-col>
+        </el-row>
+      </el-tab-pane>
+
+      <!-- Standard Answer Settings -->
+      <el-tab-pane label="标准答案配置">
+         <template #label>
+           <span class="custom-tabs-label">
+             <el-icon><List /></el-icon>
+             <span> 标准答案</span>
+           </span>
+         </template>
+
+         <el-row :gutter="20">
+            <el-col :span="12">
+               <el-card shadow="hover">
+                  <template #header>上传标准答案文件</template>
+                  <el-upload
+                    class="upload-demo"
+                    drag
+                    action="#"
+                    :auto-upload="false"
+                    :limit="1"
+                    :on-change="handleStandardChange"
+                    accept=".txt"
+                  >
+                    <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+                    <div class="el-upload__text">
+                      Drop file here or <em>click to upload</em>
+                    </div>
+                  </el-upload>
+               </el-card>
+            </el-col>
+            <el-col :span="12">
+                <el-card shadow="hover">
+                   <template #header>
+                      <div class="card-header">
+                        <span>当前标准答案预览</span>
+                        <div>
+                            <el-button v-if="standardKeyCount > 0" type="primary" size="small" @click="saveStandardKeyManual">保存修改</el-button>
+                            <el-tag v-if="standardKeyCount > 0" type="success" style="margin-left: 10px">{{ standardKeyCount }} 题已解析</el-tag>
+                            <el-tag v-else type="info">未配置</el-tag>
+                        </div>
+                      </div>
+                   </template>
+                   <el-input 
+                     v-model="editableStandardKeyJson" 
+                     type="textarea" 
+                     :rows="15" 
+                     placeholder="上传后此处显示解析结果 (JSON格式)，支持手动修改"
+                   />
+                </el-card>
+            </el-col>
+         </el-row>
+      </el-tab-pane>
+
       <!-- LLM Settings -->
       <el-tab-pane label="LLM 配置">
         <template #label>
@@ -13,6 +150,17 @@
 
         <el-form label-width="120px" style="max-width: 600px">
           <el-alert title="配置大语言模型以启用主观题智能批改" type="info" show-icon :closable="false" class="mb-20" />
+
+          <el-form-item label="供应商">
+             <el-select v-model="selectedProvider" @change="handleProviderChange">
+                <el-option
+                   v-for="p in providers"
+                   :key="p.value"
+                   :label="p.label"
+                   :value="p.value"
+                />
+             </el-select>
+          </el-form-item>
 
           <el-form-item label="Base URL">
             <el-input v-model="llmConfig.base_url" placeholder="https://api.deepseek.com" />
@@ -68,59 +216,95 @@
       </el-tab-pane>
 
       <!-- Template/Parser Settings -->
-      <el-tab-pane label="答题卡模板配置">
+      <el-tab-pane label="匹配规则配置">
          <template #label>
            <span class="custom-tabs-label">
              <el-icon><Document /></el-icon>
-             <span> 模板配置</span>
+             <span> 匹配规则</span>
            </span>
         </template>
 
-        <el-row :gutter="20">
-           <el-col :span="14">
-               <el-form label-width="120px" label-position="top">
-                  <el-alert title="配置解析答题卡时的正则表达式 (高级)" type="warning" show-icon :closable="false" class="mb-20" />
+        <el-form label-width="120px" label-position="top" style="max-width: 800px">
+          <el-alert title="配置解析答题卡时的正则表达式 (高级)" type="warning" show-icon :closable="false" class="mb-20" />
 
-                  <el-form-item label="头部提取正则 (Header Regex)">
-                     <el-input v-model="parserConfig.header_regex" type="textarea" :rows="2" />
-                     <div class="help-text">需包含3个捕获组，分别对应：学号、姓名、机号</div>
-                  </el-form-item>
+          <el-form-item label="头部提取正则 (Header Regex)">
+             <el-input v-model="parserConfig.header_regex" type="textarea" :rows="2" />
+             <div class="help-text">需包含3个捕获组，分别对应：学号、姓名、机号</div>
+          </el-form-item>
 
-                  <el-form-item label="题目提取正则 (Question Regex)">
-                     <el-input v-model="parserConfig.question_regex" type="textarea" :rows="2" />
-                     <div class="help-text">需包含2个捕获组：题号 (数字) 和 答案</div>
-                  </el-form-item>
+          <el-form-item label="题目提取正则 (Question Regex)">
+             <el-input v-model="parserConfig.question_regex" type="textarea" :rows="2" />
+             <div class="help-text">需包含2个捕获组：题号 (数字) 和 答案</div>
+          </el-form-item>
 
-                  <el-form-item>
-                     <el-button type="primary" @click="saveParser">保存解析规则</el-button>
-                  </el-form-item>
-               </el-form>
-           </el-col>
-           <el-col :span="10">
-               <el-card>
-                  <template #header>
-                     <div class="card-header">
-                        <span>答题卡模板预览</span>
-                        <el-button size="small" @click="downloadTemplate">下载模板</el-button>
-                     </div>
-                  </template>
-                  <pre class="template-preview">{{ templatePreview }}</pre>
-               </el-card>
-           </el-col>
-        </el-row>
+          <el-form-item>
+             <el-button type="primary" @click="saveParser">保存解析规则</el-button>
+          </el-form-item>
+       </el-form>
       </el-tab-pane>
+
+
     </el-tabs>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
 import { useExamStore } from '../stores/examStore';
+import { Cpu, Coin, Document, Edit, Plus, Delete, List, UploadFilled } from '@element-plus/icons-vue';
 
 const examStore = useExamStore();
 const API_BASE = 'http://localhost:8000/api/settings';
+
+// Standard Answer Logic
+const editableStandardKeyJson = ref('');
+
+const handleStandardChange = async (file) => {
+    const success = await examStore.uploadStandardAnswer(file.raw);
+    if (success) ElMessage.success('标准答案解析成功');
+    else ElMessage.error('标准答案解析失败');
+};
+
+const filterStandardKey = (keyObj) => {
+    if (!keyObj) return {};
+    const filtered = { ...keyObj };
+    delete filtered['学号'];
+    delete filtered['姓名'];
+    delete filtered['机号'];
+    return filtered;
+};
+
+watch(() => examStore.standardKey, (newVal) => {
+    if (newVal) {
+        editableStandardKeyJson.value = JSON.stringify(filterStandardKey(newVal), null, 4);
+    } else {
+        editableStandardKeyJson.value = '';
+    }
+}, { immediate: true });
+
+const saveStandardKeyManual = () => {
+    try {
+        const parsed = JSON.parse(editableStandardKeyJson.value);
+        // Validate?
+        examStore.standardKey = parsed;
+        ElMessage.success('标准答案已手动更新');
+    } catch (e) {
+        ElMessage.error('JSON 格式错误，无法保存');
+    }
+};
+
+const standardKeyCount = computed(() => {
+    // Count only questions, not empty base fields if they exist?
+    // actually base fields are removed in our filtered view, but might exist in store.
+    // Let's count filtered keys.
+    if (!examStore.standardKey) return 0;
+    const keys = Object.keys(examStore.standardKey);
+    const exclude = ['学号', '姓名', '机号'];
+    return keys.filter(k => !exclude.includes(k)).length;
+});
+
 
 // Config State
 const llmConfig = ref({
@@ -133,6 +317,59 @@ const parserConfig = ref({
     header_regex: '', question_regex: ''
 });
 
+// LLM Providers
+const providers = [
+    { label: 'DeepSeek (推荐)', value: 'deepseek', url: 'https://api.deepseek.com', defaultModel: 'deepseek-chat' },
+    { label: 'OpenAI', value: 'openai', url: 'https://api.openai.com/v1', defaultModel: 'gpt-4-turbo' },
+    { label: 'Moonshot (Kimi)', value: 'moonshot', url: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k' },
+    { label: 'Gemini (OpenAI Compatible)', value: 'gemini', url: 'https://generativelanguage.googleapis.com/v1beta/openai/', defaultModel: 'gemini-1.5-flash' },
+    { label: 'Custom / Other', value: 'custom', url: '', defaultModel: '' }
+];
+const selectedProvider = ref('custom');
+
+// Watch provider change to update URL
+const handleProviderChange = (val) => {
+    const p = providers.find(p => p.value === val);
+    if (p && p.value !== 'custom') {
+        llmConfig.value.base_url = p.url;
+        if (p.defaultModel && !llmConfig.value.model) {
+             llmConfig.value.model = p.defaultModel;
+        }
+    }
+};
+
+// Merged Exam Config Logic
+const hasSubjective = computed(() => {
+    return examStore.config.sections.some(s => s.question_type === '主观题');
+});
+
+const addSection = () => {
+  const ids = examStore.config.sections.map(s => Number(s.section_id) || 0);
+  const maxId = ids.length > 0 ? Math.max(...ids) : 0;
+  
+  examStore.config.sections.push({
+    section_id: String(maxId + 1),
+    match_keyword: '新题型',
+    name: '得分',
+    score: 5,
+    num_questions: 1,
+    question_type: '客观题'
+  });
+};
+
+const removeSection = (index) => {
+  examStore.config.sections.splice(index, 1);
+};
+
+const saveSettings = async () => {
+  const success = await examStore.saveConfig(examStore.config);
+  if (success) {
+    ElMessage.success('配置已保存');
+  } else {
+    ElMessage.error('保存失败');
+  }
+};
+
 // Load Configs
 const loadConfigs = async () => {
     try {
@@ -142,13 +379,18 @@ const loadConfigs = async () => {
             axios.get(`${API_BASE}/parser`)
         ]);
         llmConfig.value = llmRes.data;
+        
+        // Auto-detect provider
+        const matched = providers.find(p => p.url === llmConfig.value.base_url);
+        selectedProvider.value = matched ? matched.value : 'custom';
+
         dbConfig.value = dbRes.data;
         parserConfig.value = parserRes.data;
     } catch (err) {
-        ElMessage.error('加载配置失败');
+        ElMessage.error('加载系统配置失败'); 
     }
 
-    // Ensure exam config is loaded for template preview
+    // Ensure exam config is loaded for template preview AND now for the Exam Config tab
     await examStore.fetchConfig();
 };
 
@@ -156,7 +398,7 @@ onMounted(() => {
     loadConfigs();
 });
 
-// Save Actions
+// Save Actions (System)
 const saveLLM = async () => {
     try {
         await axios.post(`${API_BASE}/llm`, llmConfig.value);
@@ -217,6 +459,7 @@ const downloadTemplate = () => {
 
 <style scoped>
 .mb-20 { margin-bottom: 20px; }
+.mt-20 { margin-top: 20px; }
 .custom-tabs-label .el-icon { vertical-align: middle; }
 .custom-tabs-label span { vertical-align: middle; margin-left: 4px; }
 .help-text { font-size: 12px; color: #999; line-height: 1.5; margin-top: 5px; }
@@ -231,4 +474,5 @@ const downloadTemplate = () => {
     font-size: 14px;
     border: 1px solid #dcdfe6;
 }
+.card-header { display: flex; justify-content: space-between; align-items: center; }
 </style>

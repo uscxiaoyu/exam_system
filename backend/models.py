@@ -10,6 +10,7 @@ class QuestionConfig(BaseModel):
     question_type: str  # "客观题" or "主观题"
     grading_criteria: Optional[str] = None
     reference_answer: Optional[str] = None # For configuration purposes, standard answer key is usually separate
+    sub_questions: List[Dict[str, str]] = [] # [{"id": "1", "question_text": "...", "reference_answer": "...", "criteria": "..."}]
 
 class ExamConfig(BaseModel):
     exam_name: str
