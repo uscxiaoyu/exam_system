@@ -7,6 +7,7 @@ import HistoryView from '../views/HistoryView.vue'
 import SubjectiveView from '../views/SubjectiveView.vue'
 import LoginView from '../views/LoginView.vue'
 import ClassManagementView from '../views/ClassManagementView.vue'
+import TaskAssignmentView from '../views/TaskAssignmentView.vue'
 import { useUserStore } from '../stores/user'
 
 const router = createRouter({
@@ -21,6 +22,12 @@ const router = createRouter({
       path: '/classes',
       name: 'classes',
       component: ClassManagementView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/tasks',
+      name: 'tasks',
+      component: TaskAssignmentView,
       meta: { requiresAuth: true }
     },
     {
