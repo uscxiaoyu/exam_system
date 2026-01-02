@@ -1,10 +1,14 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
 from fastapi.responses import Response
 from typing import List, Dict, Any
+from sqlalchemy.orm import Session
 from backend.models.old_models import StudentData, ExamConfig, SubjectiveGradingRequest, GradingResult
 from backend.services.core import calculate_score
 from backend.services.llm import grade_subjective_question
 from backend.utils import generate_excel_bytes
+from backend.api import deps
+from backend.models.user import User
+from backend.services.matching import MatchService
 
 router = APIRouter(prefix="/api/grade", tags=["grade"])
 
@@ -25,7 +29,9 @@ async def export_grades(data: List[Dict] = Body(...)):
 
 @router.post("/batch")
 async def batch_grade(
-    payload: Dict[str, Any] = Body(...)
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
 ):
     """
     Payload structure:
@@ -44,27 +50,33 @@ async def batch_grade(
     if not students or not standard_key or not config_data:
         raise HTTPException(status_code=400, detail="Missing required data")
 
-    # Reconstruct ExamConfig (not strictly needed for calculation but good for validation)
-    # Convert config dict back to list of dicts if needed
-    sections = config_data.get("sections", [])
+    # Initialize MatchService
+    matcher = None
+    if current_user.school_id:
+        matcher = MatchService(db, current_user.school_id)
 
+    sections = config_data.get("sections", [])
     graded_results = []
 
     for student in students:
+        # Match Student against DB if school context exists
+        if matcher:
+            ocr_id = student.get("学号")
+            ocr_name = student.get("姓名")
+            matched_student = matcher.match_student(ocr_id, ocr_name)
+            if matched_student:
+                # Update info from DB source of truth
+                student["学号"] = matched_student.student_number
+                student["姓名"] = matched_student.name
+                student["_db_id"] = matched_student.id
+            else:
+                student["_db_match"] = False
+
         # Get student's specific LLM results if any
         student_llm_data = None
-        # Try to match by student ID (學号)
         student_id = student.get("学号")
         if student_id and student_id in llm_results:
              student_llm_data = llm_results[student_id]
-
-        # Or if the payload structure is flat (handled by frontend),
-        # frontend might merge llm results into student object before sending.
-        # But for separation, let's assume `calculate_score` takes `llm_graded_data`
-
-        # However, `calculate_score` expects `llm_graded_data` to be a dict of {q_key: result}
-        # It's better if the frontend passes the merged state or we merge it here.
-        # Let's support `llm_graded` key inside student object as well.
 
         s_llm = student.get("llm_graded", {})
         if student_llm_data:
@@ -88,7 +100,6 @@ async def grade_subjective(request: SubjectiveGradingRequest):
     )
 
     if not success:
-        # Return 0 score but with error message as comment
         return GradingResult(score=0.0, comment=f"Error: {comment}")
 
     return GradingResult(score=score, comment=comment)
