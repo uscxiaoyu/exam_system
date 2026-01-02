@@ -6,6 +6,8 @@ from backend.models.user import User
 from backend.models.school import School
 from backend.models.exam import Exam
 from backend.models.exam_record import ExamRecord
+from backend.models.class_ import Class
+from backend.models.student import Student
 
 from backend.core.security import get_password_hash
 

@@ -5,45 +5,77 @@ import ObjectiveMarkingView from '../views/ObjectiveMarkingView.vue'
 import ResultsView from '../views/ResultsView.vue'
 import HistoryView from '../views/HistoryView.vue'
 import SubjectiveView from '../views/SubjectiveView.vue'
+import LoginView from '../views/LoginView.vue'
+import ClassManagementView from '../views/ClassManagementView.vue'
+import { useUserStore } from '../stores/user'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      path: '/login',
+      name: 'login',
+      component: LoginView
+    },
+    {
+      path: '/classes',
+      name: 'classes',
+      component: ClassManagementView,
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/',
-      redirect: '/settings'
+      redirect: '/settings',
+      meta: { requiresAuth: true }
     },
     {
       path: '/subjective',
       name: 'subjective',
-      component: SubjectiveView
+      component: SubjectiveView,
+      meta: { requiresAuth: true }
     },
     {
       path: '/upload',
       name: 'upload',
-      component: StudentUploadView
+      component: StudentUploadView,
+      meta: { requiresAuth: true }
     },
     {
       path: '/objective',
       name: 'objective',
-      component: ObjectiveMarkingView
+      component: ObjectiveMarkingView,
+      meta: { requiresAuth: true }
     },
     {
       path: '/results',
       name: 'results',
-      component: ResultsView
+      component: ResultsView,
+      meta: { requiresAuth: true }
     },
     {
       path: '/history',
       name: 'history',
-      component: HistoryView
+      component: HistoryView,
+      meta: { requiresAuth: true }
     },
     {
       path: '/settings',
       name: 'settings',
-      component: SettingsView
+      component: SettingsView,
+      meta: { requiresAuth: true }
     }
   ]
+})
+
+router.beforeEach((to, from, next) => {
+  const userStore = useUserStore()
+  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
+    next('/login')
+  } else if (to.path === '/login' && userStore.isLoggedIn) {
+    next('/')
+  } else {
+    next()
+  }
 })
 
 export default router

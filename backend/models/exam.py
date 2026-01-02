@@ -12,5 +12,8 @@ class Exam(Base):
     creator_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     school_id = Column(Integer, ForeignKey("school.id"), nullable=False)
 
+    # Optional link to a specific class (for auto-roster)
+    class_id = Column(Integer, ForeignKey("classes.id"), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
