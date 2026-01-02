@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 import json
 import os
-from backend.models import DBConfig, LLMConfig, ParserConfig
+from backend.models.old_models import DBConfig, LLMConfig, ParserConfig
 from backend.database import reload_engine
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])

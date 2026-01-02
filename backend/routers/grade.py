@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Body
 from fastapi.responses import Response
 from typing import List, Dict, Any
-from backend.models import StudentData, ExamConfig, SubjectiveGradingRequest, GradingResult
+from backend.models.old_models import StudentData, ExamConfig, SubjectiveGradingRequest, GradingResult
 from backend.services.core import calculate_score
 from backend.services.llm import grade_subjective_question
 from backend.utils import generate_excel_bytes

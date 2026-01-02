@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 import json
 import os
-from backend.models import ExamConfig, QuestionConfig
+from backend.models.old_models import ExamConfig, QuestionConfig
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
