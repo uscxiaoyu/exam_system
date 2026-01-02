@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: grade_system_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=grade_system
+      - USE_SQLITE=False
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_TYPE=minio
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - S3_BUCKET=grade-bucket
+    depends_on:
+      - db
+      - redis
+      - minio
+
+  frontend:
+    build: ./frontend
+    container_name: grade_system_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  worker:
+    build: ./backend
+    container_name: grade_system_worker
+    command: celery -A backend.core.celery_app worker --loglevel=info
+    environment:
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=grade_system
+      - USE_SQLITE=False
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: mysql:8.0
+    container_name: grade_system_db
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=grade_system
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    container_name: grade_system_redis
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio
+    container_name: grade_system_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+volumes:
+  db_data:
+  minio_data:

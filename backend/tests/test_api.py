@@ -34,19 +34,15 @@ def test_save_config():
     assert response.status_code == 200
     assert response.json()["exam_name"] == "Test Exam"
 
-    # Restore default (optional, but good practice if using file based)
-
 def test_upload_standard():
-    # Mock file content
-    content = b"1-1\n1. A"
-    # Actually standard answer parser needs config.
-    # Let's assume the config is set to match "1-1" or similar structure.
-    # The default parser expects "match_keyword" in the text.
+    # Update regex config to ensure it matches our test content
+    parser_config = {
+        "header_regex": r"ID:(.*?)\s+Name:(.*?)\s+M:(.*)",
+        "question_regex": r"(\d+)\.\s*([a-zA-Z0-9_\u4e00-\u9fa5]+)?"
+    }
+    client.post("/api/settings/parser", json=parser_config)
 
-    # Let's construct a valid content based on config saved in previous test
-    # "学号:000 姓名:Std 机号:0"
-    header = "学号:000 姓名:Std 机号:0\n"
-    # Previous test saved "Test Section" as match keyword
+    header = "ID:000 Name:Std M:0\n"
     body = "Test Section\n1. A"
     content = (header + body).encode('utf-8')
 
