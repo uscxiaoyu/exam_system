@@ -1,46 +1,13 @@
 {
-  "exam_name": "Exam_2026_01",
+  "exam_name": "Test",
   "sections": [
     {
       "section_id": "1",
-      "match_keyword": "一、单项选择题",
-      "name": "单选得分",
-      "score": 2.0,
-      "num_questions": 15,
+      "match_keyword": "Part 1",
+      "name": "S1",
+      "score": 1.0,
+      "num_questions": 1,
       "question_type": "客观题",
-      "grading_criteria": null,
-      "reference_answer": "",
-      "sub_questions": []
-    },
-    {
-      "section_id": "2",
-      "match_keyword": "二、判断题",
-      "name": "判断得分",
-      "score": 2.0,
-      "num_questions": 5,
-      "question_type": "客观题",
-      "grading_criteria": null,
-      "reference_answer": "",
-      "sub_questions": []
-    },
-    {
-      "section_id": "3",
-      "match_keyword": "三、选择填空题",
-      "name": "填空得分",
-      "score": 3.0,
-      "num_questions": 8,
-      "question_type": "客观题",
-      "grading_criteria": null,
-      "reference_answer": "",
-      "sub_questions": []
-    },
-    {
-      "section_id": "4",
-      "match_keyword": "四、应用题",
-      "name": "应用得分",
-      "score": 5.0,
-      "num_questions": 4,
-      "question_type": "主观题",
       "grading_criteria": null,
       "reference_answer": null,
       "sub_questions": []

@@ -1,9 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, desc
 from typing import List, Dict, Any
-from backend.database import get_engine, is_db_available
+from backend.api import deps
+from backend.models.user import User
+from backend.models.exam_record import ExamRecord
+from backend.models.exam import Exam
 from backend.utils import generate_excel_bytes
 import json
 import pandas as pd
@@ -12,63 +15,82 @@ import io
 router = APIRouter(prefix="/api/history", tags=["history"])
 
 @router.get("/")
-async def get_history_summary():
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="Database not available")
+async def get_history_summary(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    # Retrieve all exams for the current user's school
+    # If user is admin, maybe see all? For now, filter by school_id if set
 
-    engine = get_engine()
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(text("SELECT DISTINCT exam_name, created_at FROM exam_records ORDER BY created_at DESC"))
-            exams = [{"exam_name": row[0], "created_at": str(row[1]) if row[1] else None} for row in result]
-            return exams
-    except Exception as e:
-        # Table might not exist yet
-        return []
+    query = db.query(Exam)
+    if current_user.school_id:
+        query = query.filter(Exam.school_id == current_user.school_id)
 
-@router.get("/{exam_name}")
-async def get_exam_history(exam_name: str):
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="Database not available")
+    exams = query.order_by(desc(Exam.created_at)).all()
 
-    engine = get_engine()
-    try:
-        query = text("SELECT student_id, student_name, machine_id, total_score, details_json, created_at FROM exam_records WHERE exam_name=:name")
-        df = pd.read_sql(query, engine, params={"name": exam_name})
+    # Also support legacy "exam_name" string based grouping from ExamRecord if migrated
+    # For now, let's assume we want to show 'Exams' table
 
-        # Process JSON details
-        records = df.to_dict(orient="records")
-        final_records = []
-        for rec in records:
-            # Map back to UI keys
-            ui_rec = {
-                "学号": rec["student_id"],
-                "姓名": rec["student_name"],
-                "机号": rec["machine_id"],
-                "总分": rec["total_score"],
-                "created_at": str(rec["created_at"])
-            }
-            if rec.get("details_json"):
-                try:
-                    details = json.loads(rec["details_json"])
-                    ui_rec.update(details)
-                except:
-                    pass
-            final_records.append(ui_rec)
-        return final_records
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = []
+    for exam in exams:
+        result.append({
+            "exam_name": exam.name,
+            "created_at": str(exam.created_at),
+            "id": exam.id,
+            "status": exam.status
+        })
+    return result
 
-@router.get("/{exam_name}/export")
-async def export_exam_history(exam_name: str):
-    # Reuse get_exam_history logic
-    records = await get_exam_history(exam_name)
+@router.get("/{exam_id}")
+async def get_exam_history(
+    exam_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    if current_user.school_id and exam.school_id != current_user.school_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    records = db.query(ExamRecord).filter(ExamRecord.exam_id == exam_id).all()
+
+    final_records = []
+    for rec in records:
+        ui_rec = {
+            "学号": rec.student_id,
+            "姓名": rec.student_name,
+            "机号": rec.machine_id,
+            "总分": rec.total_score,
+            "created_at": str(rec.created_at)
+        }
+        if rec.details_json:
+            try:
+                # details_json is already a dict if loaded by ORM? or JSON string?
+                # SQLAlchemy JSON type returns dict/list usually
+                details = rec.details_json if isinstance(rec.details_json, dict) else json.loads(rec.details_json)
+                ui_rec.update(details)
+            except:
+                pass
+        final_records.append(ui_rec)
+    return final_records
+
+@router.get("/{exam_id}/export")
+async def export_exam_history(
+    exam_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    records = await get_exam_history(exam_id, db, current_user)
     try:
         excel_io = generate_excel_bytes(records)
+        exam = db.query(Exam).filter(Exam.id == exam_id).first()
+        filename = f"{exam.name}.xlsx" if exam else f"exam_{exam_id}.xlsx"
         return Response(
             content=excel_io.getvalue(),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={exam_name}.xlsx"}
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -81,77 +103,89 @@ class HistorySaveRequest(BaseModel):
 
 @router.post("/")
 async def save_history(
-    request: HistorySaveRequest
+    request: HistorySaveRequest,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
 ):
+    """
+    Saves exam records.
+    NOTE: This logic creates a new Exam if it doesn't exist, or appends to it.
+    """
     exam_name = request.exam_name
     records = request.records
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="Database not available")
 
     if not records:
         return {"message": "No records to save"}
 
-    engine = get_engine()
-    try:
-        df = pd.DataFrame(records)
+    # Find or Create Exam
+    # Only within the user's school
+    query = db.query(Exam).filter(Exam.name == exam_name)
+    if current_user.school_id:
+        query = query.filter(Exam.school_id == current_user.school_id)
 
-        # Prepare data for DB
-        # Columns expected: student_id, student_name, machine_id, total_score, details_json, exam_name
+    exam = query.first()
 
-        # Extract details (Q columns and score columns)
-        detail_cols = [c for c in df.columns if c.startswith('Q') or '得分' in c]
-
-        df['details_json'] = df[detail_cols].apply(
-            lambda x: json.dumps(x.to_dict(), ensure_ascii=False), axis=1
+    if not exam:
+        # Create new exam
+        exam = Exam(
+            name=exam_name,
+            creator_id=current_user.id,
+            school_id=current_user.school_id if current_user.school_id else 1, # Fallback to default school
+            status="finished"
         )
+        db.add(exam)
+        db.commit()
+        db.refresh(exam)
 
-        cols_map = {'学号': 'student_id', '姓名': 'student_name', '机号': 'machine_id', '总分': 'total_score'}
+    # Process Records
+    count = 0
+    for rec_data in records:
+        student_id = rec_data.get("学号") or rec_data.get("student_id")
+        if not student_id:
+            continue
 
-        # Rename if exists, otherwise create/fill
-        rename_dict = {}
-        for k, v in cols_map.items():
-            if k in df.columns:
-                rename_dict[k] = v
-            elif v not in df.columns:
-                # If required col missing, fill with default?
-                pass
+        student_name = rec_data.get("姓名") or rec_data.get("student_name")
+        machine_id = rec_data.get("机号") or rec_data.get("machine_id")
+        total_score = rec_data.get("总分") or rec_data.get("total_score")
 
-        final_df = df.rename(columns=rename_dict)
+        # Details: everything else
+        details = {k: v for k, v in rec_data.items() if k not in ["学号", "student_id", "姓名", "student_name", "机号", "machine_id", "总分", "total_score"]}
 
-        # Ensure required columns exist
-        required_cols = ['student_id', 'student_name', 'machine_id', 'total_score', 'details_json']
-        for col in required_cols:
-            if col not in final_df.columns:
-                final_df[col] = None # Or valid default
+        # Check if record exists for this student in this exam?
+        # For simplicity, we can delete old ones or update.
+        # Let's delete old one first for this student/exam combo
+        db.query(ExamRecord).filter(ExamRecord.exam_id == exam.id, ExamRecord.student_id == student_id).delete()
 
-        final_df = final_df[required_cols]
-        final_df['exam_name'] = exam_name
+        new_record = ExamRecord(
+            exam_id=exam.id,
+            student_id=str(student_id),
+            student_name=student_name,
+            machine_id=str(machine_id),
+            total_score=float(total_score) if total_score is not None else 0.0,
+            details_json=details
+        )
+        db.add(new_record)
+        count += 1
 
-        with engine.connect() as conn:
-            # Delete old records for this exam
-            conn.execute(text("DELETE FROM exam_records WHERE exam_name = :name"), {"name": exam_name})
-            conn.commit()
+    db.commit()
+    return {"message": f"Saved {count} records for exam '{exam_name}' (ID: {exam.id})"}
 
-        final_df.to_sql('exam_records', con=engine, if_exists='append', index=False)
+@router.delete("/{exam_id}")
+async def delete_history(
+    exam_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+         raise HTTPException(status_code=404, detail="Exam not found")
 
-        return {"message": f"Saved {len(final_df)} records"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if current_user.school_id and exam.school_id != current_user.school_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
 
-@router.delete("/{exam_name}")
-async def delete_history(exam_name: str):
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="Database not available")
+    # Delete records first
+    db.query(ExamRecord).filter(ExamRecord.exam_id == exam_id).delete()
+    db.delete(exam)
+    db.commit()
 
-    engine = get_engine()
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(text("DELETE FROM exam_records WHERE exam_name = :name"), {"name": exam_name})
-            conn.commit()
-            if result.rowcount == 0:
-                 raise HTTPException(status_code=404, detail="Exam not found")
-            return {"message": f"Deleted records for {exam_name}"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"message": f"Deleted exam {exam_id}"}
