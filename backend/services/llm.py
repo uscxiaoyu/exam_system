@@ -3,9 +3,9 @@ import requests
 import re
 from typing import Dict, Any, List, Tuple
 
-def call_llm_api(prompt: str, api_config: Dict[str, Any]) -> Tuple[bool, Any]:
+def call_llm_api(prompt: str, api_config: Dict[str, Any], system_prompt: str = None) -> Tuple[bool, Any]:
     """
-    调用LLM API进行批改
+    调用LLM API
     返回: (success, response_text/error_msg)
     """
     try:
@@ -15,17 +15,19 @@ def call_llm_api(prompt: str, api_config: Dict[str, Any]) -> Tuple[bool, Any]:
             "Content-Type": "application/json"
         }
 
+        default_system = "你是一位专业的教师，负责批改学生的主观题答案。请根据题目、参考答案和评分标准，给出客观公正的评分。"
+
         data = {
             "model": api_config.get('model', 'gpt-4o-mini'),
             "messages": [
-                {"role": "system", "content": "你是一位专业的教师，负责批改学生的主观题答案。请根据题目、参考答案和评分标准，给出客观公正的评分。"},
+                {"role": "system", "content": system_prompt if system_prompt else default_system},
                 {"role": "user", "content": prompt}
             ],
             "temperature": api_config.get('temperature', 0.3),
-            "max_tokens": api_config.get('max_tokens', 500)
+            "max_tokens": api_config.get('max_tokens', 1000) # Increased token limit for generation
         }
 
-        response = requests.post(url, headers=headers, json=data, timeout=30)
+        response = requests.post(url, headers=headers, json=data, timeout=60) # Increased timeout
         response.raise_for_status()
 
         result = response.json()
@@ -138,3 +140,83 @@ def grade_subjective_question(
                 return False, 0.0, f"无法解析LLM响应: {response}"
     except Exception as e:
         return False, 0.0, f"解析失败: {str(e)}"
+
+def batch_generate_questions(
+    topic: str,
+    question_type: str,
+    difficulty: str,
+    count: int,
+    api_config: Dict[str, Any]
+) -> Tuple[bool, List[Dict], str]:
+    """
+    Batch generate questions using LLM.
+    Returns: (success, list_of_questions, error_message)
+    """
+
+    system_prompt = "You are an expert exam question generator. You must output strictly valid JSON."
+
+    # Define type-specific instructions
+    type_instructions = ""
+    if question_type in ["single_choice", "multiple_choice"]:
+        type_instructions = "For choice questions, provide exactly 4 options in the 'options' list. The 'answer' should be the exact text of the correct option(s)."
+    elif question_type == "true_false":
+        type_instructions = "For true/false questions, 'options' should be ['True', 'False']. The 'answer' should be 'True' or 'False'."
+    else:
+        type_instructions = "For subjective questions, leave 'options' empty. Provide a comprehensive reference answer."
+
+    prompt = f"""
+    Generate {count} exam questions about "{topic}".
+
+    Parameters:
+    - Type: {question_type}
+    - Difficulty: {difficulty}
+    - Count: {count}
+
+    {type_instructions}
+
+    Output format:
+    Return ONLY a JSON list of objects. Each object must have this structure:
+    [
+        {{
+            "type": "{question_type}",
+            "content": "Question text here...",
+            "options": ["Option A", "Option B", ...],  // Empty list if not applicable
+            "answer": "Correct answer text",
+            "score": 5
+        }},
+        ...
+    ]
+
+    Do not include any markdown formatting (like ```json). Just the raw JSON string.
+    """
+
+    success, response = call_llm_api(prompt, api_config, system_prompt=system_prompt)
+
+    if not success:
+        return False, [], response
+
+    try:
+        # Clean up potential markdown code blocks
+        clean_response = response.strip()
+        if clean_response.startswith("```json"):
+            clean_response = clean_response[7:]
+        if clean_response.startswith("```"):
+            clean_response = clean_response[3:]
+        if clean_response.endswith("```"):
+            clean_response = clean_response[:-3]
+
+        questions = json.loads(clean_response)
+
+        # Validate structure roughly
+        if not isinstance(questions, list):
+            return False, [], "LLM did not return a list."
+
+        # Post-process: add IDs if missing (though backend usually assigns them, frontend needs unique keys)
+        # We will let the frontend or API handler assign proper IDs, but return the list as is.
+
+        return True, questions, "Success"
+
+    except json.JSONDecodeError:
+        return False, [], f"Failed to parse JSON response: {response}"
+    except Exception as e:
+        return False, [], f"Error processing questions: {str(e)}"

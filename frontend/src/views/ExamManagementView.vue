@@ -37,6 +37,37 @@
       </template>
     </el-dialog>
 
+    <!-- AI Generation Dialog -->
+    <el-dialog v-model="showAiDialog" title="AI Generate Questions">
+      <el-form :model="aiForm" label-width="120px">
+        <el-form-item label="Topic">
+          <el-input v-model="aiForm.topic" placeholder="e.g. Calculus, Python Basics" />
+        </el-form-item>
+        <el-form-item label="Type">
+          <el-select v-model="aiForm.type">
+            <el-option label="Single Choice" value="single_choice" />
+            <el-option label="Multiple Choice" value="multiple_choice" />
+            <el-option label="True/False" value="true_false" />
+            <el-option label="Subjective" value="comprehensive" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Difficulty">
+          <el-select v-model="aiForm.difficulty">
+            <el-option label="Easy" value="easy" />
+            <el-option label="Medium" value="medium" />
+            <el-option label="Hard" value="hard" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Count">
+          <el-input-number v-model="aiForm.count" :min="1" :max="10" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showAiDialog = false">Cancel</el-button>
+        <el-button type="primary" @click="generateQuestions" :loading="isGenerating">Generate</el-button>
+      </template>
+    </el-dialog>
+
     <!-- Create/Edit Dialog -->
     <el-dialog v-model="showCreateDialog" :title="isEditing ? 'Edit Exam' : 'Create Exam'" width="70%">
       <el-form :model="form" label-width="120px">
@@ -64,7 +95,10 @@
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
            <h3>Questions</h3>
-           <el-button type="warning" @click="syncFromConfig">Sync from Answer Sheet Config</el-button>
+           <div>
+             <el-button type="success" @click="showAiDialog = true" icon="MagicStick">AI Generate</el-button>
+             <el-button type="warning" @click="syncFromConfig">Sync from Answer Sheet Config</el-button>
+           </div>
         </div>
         
         <div v-for="(q, idx) in form.questions" :key="idx" class="question-editor">
@@ -252,6 +286,7 @@ const syncFromConfig = async () => {
   }
   
   try {
+    // Attempt to sync from configuration (Legacy support)
     const res = await axios.get('/api/config/')
     const sections = res.data.sections || []
     
@@ -280,7 +315,42 @@ const syncFromConfig = async () => {
     form.questions = newQuestions
     ElMessage.success(`Generated ${newQuestions.length} questions from config`)
   } catch (e) {
-    ElMessage.error("Failed to sync config")
+    console.error(e)
+    ElMessage.warning("Failed to sync from Answer Sheet Config. Ensure config exists.")
+  }
+}
+
+// --- AI Generation Logic ---
+const showAiDialog = ref(false)
+const isGenerating = ref(false)
+const aiForm = reactive({
+  topic: '',
+  type: 'single_choice',
+  difficulty: 'medium',
+  count: 1
+})
+
+const generateQuestions = async () => {
+  if (!aiForm.topic) {
+    ElMessage.warning("Please enter a topic")
+    return
+  }
+
+  isGenerating.value = true
+  try {
+    const res = await axios.post('/api/v1/exams/generate/questions', aiForm)
+    const newQuestions = res.data
+
+    // Append to form
+    form.questions.push(...newQuestions)
+
+    ElMessage.success(`Generated ${newQuestions.length} questions`)
+    showAiDialog.value = false
+  } catch (e) {
+    console.error(e)
+    ElMessage.error(e.response?.data?.detail || "Generation failed")
+  } finally {
+    isGenerating.value = false
   }
 }
 
