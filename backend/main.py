@@ -5,7 +5,7 @@ import uvicorn
 import logging
 
 from backend.routers import config, upload, grade, history, settings
-from backend.api.v1.endpoints import auth, classes, students, sections, tasks, async_tasks
+from backend.api.v1.endpoints import auth, classes, students, sections, tasks, async_tasks, exams, student_exams
 from backend.init_db import init_db
 
 # Lifespan context to run startup tasks
@@ -46,6 +46,8 @@ app.include_router(students.router, prefix="/api/v1/students", tags=["students"]
 app.include_router(sections.router, prefix="/api/v1", tags=["sections"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
 app.include_router(async_tasks.router, prefix="/api/v1", tags=["async"])
+app.include_router(exams.router, prefix="/api/v1/exams", tags=["exams"])
+app.include_router(student_exams.router, prefix="/api/v1/student/exams", tags=["student_exams"])
 app.include_router(config.router)
 app.include_router(upload.router)
 app.include_router(grade.router)
