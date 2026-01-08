@@ -2,17 +2,17 @@
   <div class="login-container">
     <el-card class="login-card">
       <template #header>
-        <h2>Login</h2>
+        <h2>系统登录</h2>
       </template>
       <el-form :model="form" @submit.prevent="handleLogin">
-        <el-form-item label="Username">
-          <el-input v-model="form.username" placeholder="Username / Student ID" />
+        <el-form-item label="用户名">
+          <el-input v-model="form.username" placeholder="请输入用户名 / 学号" />
         </el-form-item>
-        <el-form-item label="Password">
-          <el-input v-model="form.password" type="password" placeholder="Password" />
+        <el-form-item label="密码">
+          <el-input v-model="form.password" type="password" placeholder="请输入密码" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" native-type="submit" :loading="loading" style="width: 100%">Login</el-button>
+          <el-button type="primary" native-type="submit" :loading="loading" style="width: 100%">登录</el-button>
         </el-form-item>
       </el-form>
       <div v-if="error" class="error-msg">{{ error }}</div>
@@ -57,7 +57,7 @@ const handleLogin = async () => {
     })
     userStore.setUser(meRes.data)
 
-    ElMessage.success('Login successful')
+    ElMessage.success('登录成功')
 
     if (meRes.data.role === 'student') {
       router.push('/student/dashboard')
@@ -66,7 +66,7 @@ const handleLogin = async () => {
     }
   } catch (e) {
     console.error(e)
-    error.value = 'Invalid username or password'
+    error.value = '用户名或密码错误'
   } finally {
     loading.value = false
   }
@@ -87,6 +87,5 @@ const handleLogin = async () => {
 .error-msg {
   color: red;
   margin-top: 10px;
-  text-align: center;
 }
 </style>
