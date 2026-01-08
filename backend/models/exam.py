@@ -13,7 +13,12 @@ class Exam(Base):
     school_id = Column(Integer, ForeignKey("school.id"), nullable=False)
 
     # Optional link to a specific class (for auto-roster)
+    # Optional link to a specific class (for auto-roster)
     class_id = Column(Integer, ForeignKey("classes.id"), nullable=True)
+
+    # Sharing Info
+    source_exam_id = Column(Integer, nullable=True) # If copied from another exam
+    source_teacher_name = Column(String(100), nullable=True) # Name of original creator
 
     # Exam Content
     questions = Column(JSON, nullable=True) # List of questions

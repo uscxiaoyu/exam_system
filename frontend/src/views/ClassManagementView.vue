@@ -11,9 +11,12 @@
       <el-table :data="classes" style="width: 100%" v-loading="loading">
         <el-table-column prop="name" label="Class Name" />
         <el-table-column prop="grade" label="Grade" />
-        <el-table-column label="Actions">
+    
+    <el-table-column label="Actions" width="350">
           <template #default="scope">
             <el-button size="small" @click="openImportDialog(scope.row)">Import Roster</el-button>
+            <el-button size="small" type="success" @click="syncUsers(scope.row)">Create Accounts</el-button>
+            <el-button size="small" type="info" @click="viewGrades(scope.row)">View Grades</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -38,7 +41,7 @@
     </el-dialog>
 
     <!-- Import Student Dialog -->
-    <el-dialog v-model="showImportDialog" title="Import Students">
+  <el-dialog v-model="showImportDialog" title="Import Students">
       <p>Upload CSV or Excel file with "Name" and "Student Number" columns.</p>
       <el-upload
         class="upload-demo"
@@ -53,6 +56,32 @@
         </div>
       </el-upload>
     </el-dialog>
+
+    <!-- Grades Dialog -->
+    <el-dialog v-model="showGradesDialog" title="Class Grades" width="80%">
+       <div style="margin-bottom: 20px;">
+          <h3>{{ currentClass?.name }} - Gradebook</h3>
+       </div>
+       <el-table :data="gradebook.students" border height="500">
+          <el-table-column prop="number" label="Student ID" width="120" fixed />
+          <el-table-column prop="name" label="Name" width="120" fixed />
+          <el-table-column 
+             v-for="exam in gradebook.exams" 
+             :key="exam.id" 
+             :label="exam.name"
+             width="150"
+          >
+             <template #default="scope">
+                {{ scope.row.grades[exam.id] !== undefined ? scope.row.grades[exam.id] : '-' }}
+             </template>
+          </el-table-column>
+          <el-table-column label="Actions" min-width="100" fixed="right">
+              <template #default="scope">
+                  <el-button size="small" type="danger" @click="removeStudent(scope.row)">Delete</el-button>
+              </template>
+          </el-table-column>
+       </el-table>
+    </el-dialog>
   </div>
 </template>
 
@@ -60,13 +89,16 @@
 import { ref, onMounted } from 'vue'
 import axios from '../utils/request'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const classes = ref([])
 const loading = ref(false)
 const showAddDialog = ref(false)
 const showImportDialog = ref(false)
+const showGradesDialog = ref(false)
 const currentClass = ref(null)
+
+const gradebook = ref({ exams: [], students: [] })
 
 const newClass = ref({
   name: '',
@@ -113,6 +145,42 @@ const handleImport = async (options) => {
   } catch (err) {
     ElMessage.error('Import failed: ' + (err.response?.data?.detail || err.message))
   }
+}
+
+const syncUsers = async (cls) => {
+  try {
+    await ElMessageBox.confirm(
+      `Create login accounts for all students in ${cls.name}? Default password will be "123456".`,
+      'Confirm Create Accounts',
+      {
+        confirmButtonText: 'Create',
+        cancelButtonText: 'Cancel',
+        type: 'warning',
+      }
+    )
+    
+    const res = await axios.post('/api/v1/students/sync-users', { class_id: cls.id })
+    ElMessage.success(res.data.message)
+  } catch (err) {
+    if (err !== 'cancel') {
+       ElMessage.error('Failed to sync users')
+    }
+  }
+}
+
+const viewGrades = async (cls) => {
+  currentClass.value = cls
+  try {
+     const res = await axios.get(`/api/v1/classes/${cls.id}/grades`)
+     gradebook.value = res.data
+     showGradesDialog.value = true
+  } catch (e) {
+     ElMessage.error("Failed to load grades")
+  }
+}
+
+const removeStudent = async (student) => {
+   ElMessage.warning("Delete Student feature requires backend update to return Student ID.")
 }
 
 onMounted(() => {

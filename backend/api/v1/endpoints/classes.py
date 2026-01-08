@@ -118,3 +118,60 @@ async def import_students(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+from backend.models.exam import Exam
+from backend.models.exam_record import ExamRecord
+
+@router.get("/{class_id}/grades")
+def get_class_grades(
+    class_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    # Verify class
+    cls = db.query(Class).filter(Class.id == class_id).first()
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if cls.school_id != current_user.school_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # 1. Get Students
+    students = db.query(Student).filter(Student.class_id == class_id).all()
+    student_map = {s.student_number: s.name for s in students}
+    student_ids = [s.student_number for s in students]
+
+    # 2. Get Exams (in this school)
+    exams = db.query(Exam).filter(Exam.school_id == current_user.school_id).order_by(Exam.created_at).all()
+    exam_list = [{"id": e.id, "name": e.name} for e in exams]
+    exam_ids = [e.id for e in exams]
+
+    # 3. Get Records
+    # We want records for these students in these exams
+    records = db.query(ExamRecord).filter(
+        ExamRecord.exam_id.in_(exam_ids),
+        ExamRecord.student_id.in_(student_ids)
+    ).all()
+
+    # 4. Build Matrix
+    # result = { exams: [...], students: [ { number: "", name: "", grades: { exam_id: score } } ] }
+    
+    student_rows = []
+    # Initialize rows for all students in class
+    for s in students:
+        student_rows.append({
+            "number": s.student_number,
+            "name": s.name,
+            "grades": {}
+        })
+
+    # Fill grades
+    for rec in records:
+        # Find student row
+        row = next((r for r in student_rows if r["number"] == rec.student_id), None)
+        if row:
+            row["grades"][rec.exam_id] = rec.total_score
+
+    return {
+        "exams": exam_list,
+        "students": student_rows
+    }

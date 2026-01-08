@@ -80,6 +80,11 @@ def grade_subjective_question(
         for i, ex in enumerate(examples):
             few_shot_text += f"示例 {i+1}:\n[学生答案]: {ex['student_answer']}\n[评分]: {ex['score']}\n[评语]: {ex['comment']}\n\n"
 
+    
+    # Python 3.11 f-string compatibility: define default criteria outside
+    default_criteria = '1. 准确性：答案是否涵盖了参考答案的核心要点\n2. 完整性：论述是否全面\n3. 逻辑性：条理是否清晰'
+    criteria_text = grading_criteria if grading_criteria else default_criteria
+
     # 构建批改prompt
     prompt = f"""请批改以下主观题：
 
@@ -91,7 +96,7 @@ def grade_subjective_question(
 
 【评分标准】
 满分：{max_score}分
-{grading_criteria if grading_criteria else '1. 准确性：答案是否涵盖了参考答案的核心要点\n2. 完整性：论述是否全面\n3. 逻辑性：条理是否清晰'}
+{criteria_text}
 
 {few_shot_text}
 

@@ -7,15 +7,35 @@
 
     <el-table :data="exams" style="width: 100%; margin-top: 20px;">
       <el-table-column prop="name" label="Exam Name" />
-      <el-table-column prop="status" label="Status" />
-      <el-table-column prop="class_id" label="Class ID" />
+      <el-table-column label="Type" width="150">
+         <template #default="scope">
+            <el-tag v-if="scope.row.source_teacher_name" type="warning">Shared by {{ scope.row.source_teacher_name }}</el-tag>
+            <el-tag v-else type="success">Created by me</el-tag>
+         </template>
+      </el-table-column>
+      <el-table-column prop="status" label="Status" width="120" />
+      <el-table-column prop="class_id" label="Class ID" width="100" />
       <el-table-column label="Actions">
         <template #default="scope">
            <el-button size="small" @click="editExam(scope.row)">Edit</el-button>
+           <el-button size="small" type="primary" @click="openShareDialog(scope.row)">Share</el-button>
            <el-button size="small" type="danger" @click="deleteExam(scope.row.id)">Delete</el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- Share Dialog -->
+    <el-dialog v-model="showShareDialog" title="Share Exam">
+      <el-form label-width="120px">
+        <el-form-item label="Target Teacher">
+          <el-input v-model="shareTargetUser" placeholder="Enter username" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showShareDialog = false">Cancel</el-button>
+        <el-button type="primary" @click="shareExam">Share</el-button>
+      </template>
+    </el-dialog>
 
     <!-- Create/Edit Dialog -->
     <el-dialog v-model="showCreateDialog" :title="isEditing ? 'Edit Exam' : 'Create Exam'" width="70%">
@@ -42,7 +62,11 @@
            />
         </el-form-item>
 
-        <h3>Questions</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+           <h3>Questions</h3>
+           <el-button type="warning" @click="syncFromConfig">Sync from Answer Sheet Config</el-button>
+        </div>
+        
         <div v-for="(q, idx) in form.questions" :key="idx" class="question-editor">
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
              <strong>Question {{ idx + 1 }}</strong>
@@ -50,8 +74,13 @@
           </div>
           <el-form-item label="Type">
             <el-select v-model="q.type">
-              <el-option label="Multiple Choice" value="choice" />
+              <el-option label="Single Choice" value="single_choice" />
+              <el-option label="Multiple Choice" value="multiple_choice" />
+              <el-option label="Fill in the Blank" value="fill_in_the_blank" />
               <el-option label="True/False" value="true_false" />
+              <el-option label="Comprehensive" value="comprehensive" />
+              <el-option label="Programming" value="programming" />
+              <el-option label="Other" value="other" />
             </el-select>
           </el-form-item>
           <el-form-item label="Content">
@@ -61,7 +90,7 @@
              <el-input v-model.number="q.score" type="number" />
           </el-form-item>
 
-          <template v-if="q.type === 'choice'">
+          <template v-if="['single_choice', 'multiple_choice'].includes(q.type)">
              <el-form-item label="Options">
                <div v-for="(opt, optIdx) in q.options" :key="optIdx" style="display: flex; margin-bottom: 5px;">
                  <el-input v-model="q.options[optIdx]" placeholder="Option text" />
@@ -72,7 +101,7 @@
           </template>
 
           <el-form-item label="Correct Answer">
-             <el-input v-model="q.answer" placeholder="Match option text EXACTLY" />
+             <el-input v-model="q.answer" placeholder="For choice: Match option text EXACTLY" />
           </el-form-item>
           <hr />
         </div>
@@ -131,9 +160,13 @@ const fetchExams = async () => {
 }
 
 const addQuestion = () => {
+  const questions = form.questions
+  const ids = questions.map(q => Number(q.id) || 0)
+  const maxId = ids.length > 0 ? Math.max(...ids) : Date.now()
+  
   form.questions.push({
-    id: Date.now().toString(),
-    type: 'choice',
+    id: String(maxId + 1),
+    type: 'single_choice',
     content: '',
     options: ['A', 'B', 'C', 'D'],
     answer: '',
@@ -185,6 +218,69 @@ const deleteExam = async (id) => {
     ElMessage.success("Deleted")
   } catch(e) {
     ElMessage.error("Error deleting")
+  }
+}
+
+// --- Sharing Logic ---
+const showShareDialog = ref(false)
+const shareTargetUser = ref('')
+const currentSharingExamId = ref(null)
+
+const openShareDialog = (exam) => {
+  currentSharingExamId.value = exam.id
+  shareTargetUser.value = ''
+  showShareDialog.value = true
+}
+
+const shareExam = async () => {
+  if (!shareTargetUser.value) return
+  try {
+    await axios.post(`/api/v1/exams/${currentSharingExamId.value}/share`, {
+      target_username: shareTargetUser.value
+    })
+    ElMessage.success("Exam shared successfully")
+    showShareDialog.value = false
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || "Share failed")
+  }
+}
+
+// --- Sync Logic ---
+const syncFromConfig = async () => {
+  if (form.questions.length > 0) {
+    if (!confirm("This will overwrite existing questions. Continue?")) return
+  }
+  
+  try {
+    const res = await axios.get('/api/config/')
+    const sections = res.data.sections || []
+    
+    const newQuestions = []
+    let qIndex = 1
+    
+    sections.forEach(sec => {
+      // Map global type to new detailed type
+      let type = 'other'
+      if (sec.question_type === '客观题') type = 'single_choice' 
+      if (sec.question_type === '主观题') type = 'comprehensive'
+      
+      const count = sec.num_questions || 0
+      for (let i = 0; i < count; i++) {
+        newQuestions.push({
+          id: String(qIndex++),
+          type: type,
+          content: `${sec.match_keyword} - Question ${i+1}`,
+          options: type.includes('choice') ? ['A','B','C','D'] : [],
+          answer: '',
+          score: sec.score
+        })
+      }
+    })
+    
+    form.questions = newQuestions
+    ElMessage.success(`Generated ${newQuestions.length} questions from config`)
+  } catch (e) {
+    ElMessage.error("Failed to sync config")
   }
 }
 

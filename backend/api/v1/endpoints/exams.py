@@ -135,3 +135,49 @@ def delete_exam(
     db.delete(exam)
     db.commit()
     return {"message": "Exam deleted"}
+
+class ShareRequest(BaseModel):
+    target_username: str
+
+@router.post("/{exam_id}/share")
+def share_exam(
+    exam_id: int,
+    share_in: ShareRequest,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    # 1. Find source exam
+    source_exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not source_exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    
+    if current_user.school_id and source_exam.school_id != current_user.school_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # 2. Find target user
+    target_user = db.query(User).filter(User.username == share_in.target_username).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Target teacher not found")
+
+    if target_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot share with yourself")
+
+    # 3. Clone Exam
+    new_exam = Exam(
+        name=f"{source_exam.name} (Shared)",
+        creator_id=target_user.id,
+        school_id=target_user.school_id if target_user.school_id else 1, # Assume same school or default
+        class_id=None, # Clear class link
+        status="draft",
+        questions=source_exam.questions,
+        start_time=None,
+        end_time=None,
+        source_exam_id=source_exam.id,
+        source_teacher_name=current_user.username
+    )
+    
+    db.add(new_exam)
+    db.commit()
+    db.refresh(new_exam)
+    
+    return {"message": f"Exam shared with {target_user.username}", "new_exam_id": new_exam.id}
