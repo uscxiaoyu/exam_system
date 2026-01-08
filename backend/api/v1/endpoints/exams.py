@@ -2,10 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import time
 from backend.api import deps
 from backend.models.user import User
 from backend.models.exam import Exam
 from backend.models.exam_record import ExamRecord
+from backend.models.old_models import LLMConfig
+from backend.services.llm import batch_generate_questions
+from backend.utils.config_utils import read_json, LLM_CONFIG_FILE
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -181,3 +185,54 @@ def share_exam(
     db.refresh(new_exam)
     
     return {"message": f"Exam shared with {target_user.username}", "new_exam_id": new_exam.id}
+
+class GenerateQuestionRequest(BaseModel):
+    topic: str
+    type: str
+    difficulty: str = "medium"
+    count: int = 1
+
+@router.post("/generate/questions", response_model=List[Question])
+def generate_questions(
+    req: GenerateQuestionRequest,
+    current_user: User = Depends(deps.get_current_user)
+):
+    if current_user.role not in ["teacher", "admin", "school_admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Read system LLM config
+    llm_config = read_json(LLM_CONFIG_FILE, LLMConfig)
+    if not llm_config.api_key:
+        raise HTTPException(status_code=500, detail="System LLM configuration is missing API Key")
+
+    success, questions_data, error_msg = batch_generate_questions(
+        topic=req.topic,
+        question_type=req.type,
+        difficulty=req.difficulty,
+        count=req.count,
+        api_config=llm_config.dict()
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail=f"LLM Generation failed: {error_msg}")
+
+    # Map to Question objects and assign temp IDs
+    result_questions = []
+    base_id = int(time.time() * 1000)
+
+    for i, q_data in enumerate(questions_data):
+        # Validate keys roughly
+        if "content" not in q_data:
+            continue
+
+        q = Question(
+            id=str(base_id + i),
+            type=q_data.get("type", req.type),
+            content=q_data.get("content", ""),
+            options=q_data.get("options", []),
+            answer=q_data.get("answer", ""),
+            score=q_data.get("score", 5.0)
+        )
+        result_questions.append(q)
+
+    return result_questions
