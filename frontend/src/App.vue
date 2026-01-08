@@ -1,5 +1,19 @@
 <template>
-  <el-container class="layout-container">
+  <div v-if="isLogin" class="full-screen">
+    <RouterView />
+  </div>
+  <div v-else-if="isStudent" class="full-screen-student">
+     <el-container class="layout-container">
+        <el-header style="display: flex; justify-content: space-between; align-items: center; background: #fff;">
+           <div class="logo"><el-icon><School /></el-icon> Online Exam System (Student)</div>
+           <el-button @click="logout">Logout</el-button>
+        </el-header>
+        <el-main>
+           <RouterView />
+        </el-main>
+     </el-container>
+  </div>
+  <el-container v-else class="layout-container">
     <el-aside width="220px">
       <div class="logo">
         <el-icon><School /></el-icon> 智能阅卷系统
@@ -12,6 +26,10 @@
         <el-menu-item index="upload" :route="{name: 'upload'}">
           <el-icon><Upload /></el-icon>
           <span>学生答卷上传</span>
+        </el-menu-item>
+        <el-menu-item index="exams" :route="{name: 'exams'}">
+          <el-icon><Monitor /></el-icon>
+          <span>在线考试管理</span>
         </el-menu-item>
         <el-menu-item index="objective" :route="{name: 'objective'}">
           <el-icon><CircleCheck /></el-icon>
@@ -33,6 +51,10 @@
           <el-icon><Setting /></el-icon>
           <span>系统配置</span>
         </el-menu-item>
+        <el-menu-item index="logout" @click="logout">
+           <el-icon><SwitchButton /></el-icon>
+           <span>退出登录</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -51,13 +73,26 @@
 
 <script setup>
 import { computed } from 'vue';
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
+import { useUserStore } from './stores/user'
 
 const route = useRoute();
+const router = useRouter();
+const userStore = useUserStore();
+
+const isLogin = computed(() => route.name === 'login');
+const isStudent = computed(() => userStore.user && userStore.user.role === 'student');
+
+const logout = () => {
+  userStore.setToken('')
+  userStore.setUser(null)
+  router.push('/login')
+}
 
 const pageTitle = computed(() => {
   switch(route.name) {
     case 'upload': return '学生答卷上传';
+    case 'exams': return '在线考试管理';
     case 'objective': return '客观题阅卷';
     case 'subjective': return '主观题智能阅卷';
     case 'results': return '成绩分析';

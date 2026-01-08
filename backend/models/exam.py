@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime, JSON
 from sqlalchemy.sql import func
 from backend.db.base import Base
 
@@ -14,6 +14,11 @@ class Exam(Base):
 
     # Optional link to a specific class (for auto-roster)
     class_id = Column(Integer, ForeignKey("classes.id"), nullable=True)
+
+    # Exam Content
+    questions = Column(JSON, nullable=True) # List of questions
+    start_time = Column(DateTime, nullable=True)
+    end_time = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -8,6 +8,9 @@ import SubjectiveView from '../views/SubjectiveView.vue'
 import LoginView from '../views/LoginView.vue'
 import ClassManagementView from '../views/ClassManagementView.vue'
 import TaskAssignmentView from '../views/TaskAssignmentView.vue'
+import ExamManagementView from '../views/ExamManagementView.vue'
+import StudentDashboard from '../views/student/StudentDashboard.vue'
+import ExamTakingView from '../views/student/ExamTakingView.vue'
 import { useUserStore } from '../stores/user'
 
 const router = createRouter({
@@ -28,6 +31,24 @@ const router = createRouter({
       path: '/tasks',
       name: 'tasks',
       component: TaskAssignmentView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/exams',
+      name: 'exams',
+      component: ExamManagementView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/student/dashboard',
+      name: 'student-dashboard',
+      component: StudentDashboard,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/student/exam/:id',
+      name: 'student-exam-taking',
+      component: ExamTakingView,
       meta: { requiresAuth: true }
     },
     {
