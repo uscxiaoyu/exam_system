@@ -14,7 +14,27 @@ from backend.core.security import get_password_hash
 
 def init_db():
     print("Creating tables...")
-    Base.metadata.create_all(bind=engine)
+    
+    # Retry loop to wait for DB to be ready
+    import time
+    from sqlalchemy.exc import OperationalError
+    
+    max_retries = 30
+    retry_interval = 2
+    
+    for i in range(max_retries):
+        try:
+            # Try to create tables (this involves connecting)
+            Base.metadata.create_all(bind=engine)
+            print("Tables created successfully.")
+            break
+        except OperationalError as e:
+            if i < max_retries - 1:
+                print(f"Database not ready yet, retrying in {retry_interval}s... ({i+1}/{max_retries})")
+                time.sleep(retry_interval)
+            else:
+                print(f"Failed to connect to database after {max_retries} retries.")
+                raise e
 
     db = SessionLocal()
 

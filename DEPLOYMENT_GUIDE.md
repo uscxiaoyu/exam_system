@@ -65,6 +65,9 @@ S3_ENDPOINT_URL=http://minio:9000
 S3_ACCESS_KEY=minioadmin
 S3_SECRET_KEY=minioadmin
 S3_BUCKET=grade-bucket
+
+# --- 任务队列 (Celery) ---
+# 必须显式配置，否则默认连接 localhost 会失败
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
 ```
@@ -175,7 +178,23 @@ docker-compose down -v
 *   **原因**：前端连接不上后端 API。
 *   **解决**：
     1.  确保后端容器正在运行 (`docker-compose ps`)。
+1.  确保后端容器正在运行 (`docker-compose ps`)。
     2.  检查浏览器控制台 (F12) 的网络请求，看 API 地址是否正确指向了 `localhost:8000`。
+
+**Q4: 报错 "Table 'grade_system.user' doesn't exist" 或 "Unknown column"**
+*   **原因**：数据库 Schema 与代码不一致，或者初始化时发生竞争条件 (Race Condition)。
+*   **解决**：
+    1.  我们已在最新版增加了自动重试机制。尝试重启后端：`docker-compose restart backend`
+    2.  如果仍有问题，请**彻底重置数据库**（警告：数据会丢失）：
+        ```bash
+        docker-compose down -v
+        docker-compose up -d --build
+        ```
+
+**Q5: Celery Worker 报错 "Connection refused"**
+*   **原因**：Celery 默认尝试连接 localhost 导致失败。
+*   **解决**：
+    确保 `docker-compose.yml` 或 `.env` 中已配置 `CELERY_BROKER_URL=redis://redis:6379/0`。最新代码已修复此问题，请重新构建 (`docker-compose up -d --build`)。
 
 ---
 
